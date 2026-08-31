@@ -1,0 +1,69 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Local agent / skills installs
+.agents/
+skills-lock.json
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+kubeconfig
+*.kubeconfig
+
+# Go (clients/producer, later CLI)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+bin/
+dist/
+clients/producer/producer
+clients/consumer/consumer
+
+# Terraform (weeks 3–4)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Java / Flink (weeks 5–7)
+target/
+*.class
+*.jar
+!**/src/main/**/*.jar
+hs_err_pid*
+
+# Python
+__pycache__/
+.venv/
+venv/
+*.pyc
+
+# Local lab data (MinIO, Postgres, checkpoints)
+data/
+checkpoints/
+*.log
