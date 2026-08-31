@@ -9,19 +9,26 @@ Self-service ingestion platform: teams get Kafka topics, ACLs, and a Debezium co
 kind create cluster --name ingest-platform --config lab/kind/config.yaml
 kubectl cluster-info --context kind-ingest-platform
 ```
-# 2. namespace / operator
+# 2. create namespace
 ```
 kubectl create namespace kafka
+```
+# 3. Apply Strimzi Operator
+```
 curl -fsSL https://github.com/strimzi/strimzi-kafka-operator/releases/download/1.2.0/strimzi-cluster-operator-1.2.0.yaml \
   | sed 's/namespace: myproject/namespace: kafka/g' \
   | kubectl apply -f - -n kafka
+```
+# 4. Verify deployment rollout finishes
+```
 kubectl -n kafka rollout status deployment/strimzi-cluster-operator --timeout=180s
 ```
-# 3. Kafka / lab.events
+
+# 5. Creates or updates the kafka cluster and topic in the kafka namespace
 ```
 kubectl apply -f lab/strimzi/config.yaml -n kafka
 ```
-# 4. wait / check
+# 6. wait / check
 ```
 kubectl -n kafka wait kafka/ingest-platform --for=condition=Ready --timeout=600s
 kubectl -n kafka get kafkatopic lab.events```
