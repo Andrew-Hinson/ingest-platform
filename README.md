@@ -34,6 +34,6 @@ kubectl -n kafka wait kafka/ingest-platform --for=condition=Ready --timeout=600s
 ```
 # 7. check
 ```
-kubectl -n kafka get kafkatopic lab.events```
+kubectl -n kafka get kafkatopic lab.events
 ```
 
