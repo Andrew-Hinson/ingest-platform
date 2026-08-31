@@ -28,9 +28,12 @@ kubectl -n kafka rollout status deployment/strimzi-cluster-operator --timeout=18
 ```
 kubectl apply -f lab/strimzi/config.yaml -n kafka
 ```
-# 6. wait / check
+# 6. wait
 ```
 kubectl -n kafka wait kafka/ingest-platform --for=condition=Ready --timeout=600s
+```
+# 7. check
+```
 kubectl -n kafka get kafkatopic lab.events```
 ```
 
