@@ -35,6 +35,17 @@ spec:
         port: 9094
         type: nodeport
         tls: false
+        configuration:
+          brokers:
+            - broker: 0
+              advertisedHost: 127.0.0.1
+              advertisedPort: 19092
+            - broker: 1
+              advertisedHost: 127.0.0.1
+              advertisedPort: 19093
+            - broker: 2
+              advertisedHost: 127.0.0.1
+              advertisedPort: 19094
     config:
         offsets.topic.replication.factor: 3
         transaction.state.log.replication.factor: 3

@@ -1,3 +1,39 @@
 # ingest-platform
 
 Self-service ingestion platform: teams get Kafka topics, ACLs, and a Debezium connector from YAML and Terraform. Flink writes Iceberg. Operated on Kind/Strimzi with scripted failure drills.
+
+## WIP Standup Commands
+
+# 1. Kind
+```
+kind create cluster --name ingest-platform --config lab/kind/config.yaml
+kubectl cluster-info --context kind-ingest-platform
+```
+# 2. create namespace
+```
+kubectl create namespace kafka
+```
+# 3. Apply Strimzi Operator
+```
+curl -fsSL https://github.com/strimzi/strimzi-kafka-operator/releases/download/1.2.0/strimzi-cluster-operator-1.2.0.yaml \
+  | sed 's/namespace: myproject/namespace: kafka/g' \
+  | kubectl apply -f - -n kafka
+```
+# 4. Verify deployment rollout finishes
+```
+kubectl -n kafka rollout status deployment/strimzi-cluster-operator --timeout=180s
+```
+
+# 5. Creates or updates the kafka cluster and topic in the kafka namespace
+```
+kubectl apply -f lab/strimzi/config.yaml -n kafka
+```
+# 6. wait
+```
+kubectl -n kafka wait kafka/ingest-platform --for=condition=Ready --timeout=600s
+```
+# 7. check
+```
+kubectl -n kafka get kafkatopic lab.events
+```
+
