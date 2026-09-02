@@ -26,16 +26,20 @@ func main() {
 	defer kafkaClient.Close()
 
 	ctx := context.Background()
-	for i := range 3 {
-		record := &kgo.Record{
-			Key:   []byte("user-42"),
-			Value: fmt.Appendf(nil, "hello-%d", i),
-		}
-		if err := kafkaClient.ProduceSync(ctx, record).FirstErr(); err != nil {
-			fatal(err)
-		}
-		fmt.Printf("%s %d %d\n", string(record.Key), record.Partition, record.Offset)
+	for i := range 20 {
+		send(ctx, kafkaClient, "user-42", fmt.Appendf(nil, "same-%d", i))
 	}
+	for i := range 10 {
+		send(ctx, kafkaClient, fmt.Sprintf("user-%d", i), fmt.Appendf(nil, "diff-%d", i))
+	}
+}
+
+func send(ctx context.Context, cl *kgo.Client, key string, value []byte) {
+	rec := &kgo.Record{Key: []byte(key), Value: value}
+	if err := cl.ProduceSync(ctx, rec).FirstErr(); err != nil {
+		fatal(err)
+	}
+	fmt.Printf("%s %d %d\n", string(rec.Key), rec.Partition, rec.Offset)
 }
 
 func fatal(err error) {
