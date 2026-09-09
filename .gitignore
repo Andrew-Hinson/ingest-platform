@@ -67,3 +67,8 @@ venv/
 data/
 checkpoints/
 *.log
+
+# grill-with-docs (domain-modeling)
+CONTEXT.md
+CONTEXT-MAP.md
+docs/adr/
