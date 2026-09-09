@@ -66,6 +66,28 @@ Apply Prometheus and Grafana.
 kubectl apply -f lab/grafana -n kafka
 ```
 
+## Terraform topic + ACL
+
+Creates a KafkaTopic and KafkaUser. Names come from variables (`topic_name`, `principal`, `prefix`). Defaults: `acme.orders` / `acme` / `acme.`. Does not manage `lab.events`.
+
+```bash
+terraform -chdir=lab/tf init
+```
+
+```bash
+terraform -chdir=lab/tf apply
+```
+
+Second apply is a no-op. Check:
+
+```bash
+kubectl -n kafka get kafkatopic acme.orders
+```
+
+```bash
+kubectl -n kafka get kafkauser acme
+```
+
 ## Access
 
 `./lab/port-forward.sh` maps brokers `19092-19094`, Karapace `8081`, Prometheus `9090`, Grafana `3000`. Ctrl-C stops all.
