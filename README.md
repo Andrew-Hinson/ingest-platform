@@ -2,7 +2,7 @@
 
 Self-service ingestion: YAML + Terraform give teams Kafka topics, ACLs, and a Debezium connector.
 
-**Now:** Kind + Strimzi Kafka 4.3.1, topic `lab.events`, Karapace, Prometheus, Grafana. Go producer/consumer against local brokers.
+**Now:** Kind + Strimzi Kafka 4.3.1, topic `lab.events`, Karapace, Postgres `orders`, KafkaConnect with Debezium, Prometheus, Grafana. Go producer/consumer against local brokers.
 
 Pinned versions: `lab/VERSIONS.md`. PRs run `.github/workflows/ci.yml` (gofmt, vet, test, terraform fmt/validate).
 
@@ -58,6 +58,36 @@ Apply Karapace (schema registry). Needs a Ready bootstrap.
 
 ```bash
 kubectl apply -f lab/karapace -n kafka
+```
+
+Apply Postgres (db `lab`, table `orders`, `wal_level=logical`). No publication or slot.
+
+```bash
+kubectl apply -f lab/postgres -n kafka
+```
+
+Wait until Postgres is ready. Inserts fail if the init SQL has not run.
+
+```bash
+kubectl -n kafka rollout status statefulset/postgres --timeout=180s
+```
+
+Insert a row into `orders`.
+
+```bash
+kubectl -n kafka exec -i postgres-0 -- psql -U lab -d lab -c "INSERT INTO orders (user_id, amount) VALUES (1, 9.99);"
+```
+
+Apply KafkaConnect (Debezium plugin, Avro converter → Karapace). First apply builds a Connect image; Ready can take several minutes. No connector CR.
+
+```bash
+kubectl apply -f lab/connect -n kafka
+```
+
+Wait until the KafkaConnect CR reports Ready.
+
+```bash
+kubectl -n kafka wait kafkaconnect/ingest-platform --for=condition=Ready --timeout=600s
 ```
 
 Apply Prometheus and Grafana.
