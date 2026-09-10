@@ -65,17 +65,16 @@ __pycache__/
 venv/
 *.pyc
 
-# Local lab data (MinIO, Postgres, checkpoints)
+# Local data (MinIO, Postgres, checkpoints)
 data/
 checkpoints/
 *.log
 
-# grill-with-docs (domain-modeling)
-CONTEXT.md
+# Multi-context map only (this repo is single-context)
 CONTEXT-MAP.md
-docs/adr/
 
 # Local agent skill config + tickets
 AGENTS.md
 docs/agents/
 .scratch/
+docs/

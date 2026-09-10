@@ -1,5 +1,5 @@
 // ingestctl apply -f tenants/acme.yaml
-// Parses tenant YAML, writes lab/tf/terraform.tfvars, runs terraform init/apply.
+// Parses tenant YAML, writes kind/tf/terraform.tfvars, runs terraform init/apply.
 package main
 
 import (
@@ -181,13 +181,13 @@ func findTFDir() (string, error) {
 		return "", err
 	}
 	for {
-		cand := filepath.Join(dir, "lab", "tf")
+		cand := filepath.Join(dir, "kind", "tf")
 		if st, err := os.Stat(cand); err == nil && st.IsDir() {
 			return cand, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("lab/tf not found; run from the repo")
+			return "", errors.New("kind/tf not found; run from the repo")
 		}
 		dir = parent
 	}

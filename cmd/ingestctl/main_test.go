@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -46,5 +48,32 @@ func TestPlanApply_rfBelowMinISR(t *testing.T) {
 	spec.Topics[0].Replication = 1
 	if _, err := planApply(spec, "", 2); err == nil {
 		t.Fatal("expected error when replication is below min-ISR")
+	}
+}
+
+func TestFindTFDir_kindNotLab(t *testing.T) {
+	root := t.TempDir()
+	kindTF := filepath.Join(root, "kind", "tf")
+	if err := os.MkdirAll(kindTF, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	got, err := findTFDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != kindTF {
+		t.Fatalf("got %q, want %q", got, kindTF)
+	}
+}
+
+func TestFindTFDir_rejectsLab(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "lab", "tf"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	if _, err := findTFDir(); err == nil {
+		t.Fatal("expected error when only lab/tf exists")
 	}
 }
