@@ -4,7 +4,7 @@ Self-service ingestion: YAML + Terraform give teams Kafka topics, ACLs, and a De
 
 **Now:** Kind + Strimzi Kafka 4.3.1, topic `lab.events`, Karapace, Prometheus, Grafana. Go producer/consumer against local brokers.
 
-Pinned versions: `lab/VERSIONS.md`.
+Pinned versions: `lab/VERSIONS.md`. PRs run `.github/workflows/ci.yml` (gofmt, vet, test, terraform fmt/validate).
 
 ## Lab standup
 

@@ -9,3 +9,5 @@ Terraform: 1.16.1
 Terraform Kubernetes provider: hashicorp/kubernetes 3.2.1
   resource: kubernetes_manifest
 ingestctl: gopkg.in/yaml.v3 v3.0.1
+CI: GitHub Actions
+  Go: 1.27.0
