@@ -17,3 +17,8 @@ variable "cluster" {
   type        = string
   description = "strimzi.io/cluster label. Must match the Kafka CR name."
 }
+
+variable "topic_ops" {
+  type        = list(string)
+  description = "Topic ACL operations for this principal."
+}

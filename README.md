@@ -68,17 +68,11 @@ kubectl apply -f lab/grafana -n kafka
 
 ## Terraform topic + ACL
 
-Creates a KafkaTopic and KafkaUser. Names come from variables (`topic_name`, `principal`, `prefix`). Defaults: `acme.orders` / `acme` / `acme.`. Does not manage `lab.events`.
+`ingestctl` reads tenant YAML, writes `lab/tf/terraform.tfvars`, runs `terraform init/apply`. Modules do not manage `lab.events`.
 
 ```bash
-terraform -chdir=lab/tf init
+go run -C cmd/ingestctl . apply -f tenants/acme.yaml
 ```
-
-```bash
-terraform -chdir=lab/tf apply
-```
-
-Second apply is a no-op. Check:
 
 ```bash
 kubectl -n kafka get kafkatopic acme.orders

@@ -1,3 +1,9 @@
+variable "tenant" {
+  type        = string
+  description = "Apply identity. ingestctl refuses to clobber a different tenant."
+  default     = "acme"
+}
+
 variable "namespace" {
   type    = string
   default = "kafka"
@@ -39,4 +45,10 @@ variable "prefix" {
   type        = string
   description = "ACL prefix. Tenant can RW this prefix, not the cluster."
   default     = "acme."
+}
+
+variable "topic_ops" {
+  type        = list(string)
+  description = "Topic ACL operations."
+  default     = ["Read", "Write", "Describe"]
 }
