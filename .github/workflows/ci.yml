@@ -8,6 +8,8 @@ on:
 jobs:
   go:
     runs-on: ubuntu-latest
+    env:
+      GO_MODULES: cmd/ingestctl clients/producer clients/consumer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -15,10 +17,10 @@ jobs:
           go-version: "1.27.0"
       - name: gofmt
         run: |
-          test -z "$(gofmt -l cmd/ingestctl clients/producer clients/consumer)"
+          test -z "$(gofmt -l $GO_MODULES)"
       - name: go vet and test
         run: |
-          for d in cmd/ingestctl clients/producer clients/consumer; do
+          for d in $GO_MODULES; do
             go vet -C "$d" ./...
             go test -C "$d" ./...
           done
