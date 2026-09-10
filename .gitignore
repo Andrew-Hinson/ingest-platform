@@ -38,8 +38,8 @@ clients/producer/producer
 clients/consumer/consumer
 cmd/ingestctl/ingestctl
 
-# Terraform (weeks 3–4)
-.ingestctl-tenant
+# Terraform
+.ingestctl/
 .terraform/
 *.tfstate
 *.tfstate.*

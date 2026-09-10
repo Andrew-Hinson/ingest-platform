@@ -1,0 +1,17 @@
+project: acme
+cluster: kind
+prefix: acme
+topics:
+  - name: acme.public.orders
+    partitions: 6
+    replication: 3
+acls:
+  - principal: acme
+    resource: acme.
+    ops: [Read, Write, Describe]
+connectors:
+  - name: acme-orders-cdc
+    class: io.debezium.connector.postgresql.PostgresConnector
+    database: acme
+    table: public.orders
+    topic_prefix: acme

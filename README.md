@@ -60,7 +60,7 @@ Apply Karapace (schema registry). Needs a Ready bootstrap.
 kubectl apply -f kind/karapace -n kafka
 ```
 
-Apply Postgres (db `lab`, table `orders`, `wal_level=logical`). No publication or slot.
+Apply Postgres (`wal_level=logical`). Init creates Project database `acme` with table `orders`. No publication or slot.
 
 ```bash
 kubectl apply -f kind/postgres -n kafka
@@ -78,7 +78,7 @@ Insert a row into `orders`.
 kubectl -n kafka exec -i postgres-0 -- psql -U lab -d lab -c "INSERT INTO orders (user_id, amount) VALUES (1, 9.99);"
 ```
 
-Apply KafkaConnect (Debezium plugin, Avro converter → Karapace). First apply builds a Connect image; Ready can take several minutes. No connector CR.
+Apply KafkaConnect (Debezium plugin, Avro converter → Karapace). First apply builds a Connect image; Ready can take several minutes. No connector CR until Apply.
 
 ```bash
 kubectl apply -f kind/connect -n kafka
@@ -96,20 +96,34 @@ Apply Prometheus and Grafana.
 kubectl apply -f kind/grafana -n kafka
 ```
 
-## Terraform topic + ACL
+## Apply topic + ACL + connector
 
-`ingestctl` reads tenant YAML, writes `kind/tf/terraform.tfvars`, runs `terraform init/apply`. Modules do not manage `lab.events`.
+`ingestctl` reads Project YAML, writes per-Project local Terraform state under `.ingestctl/`, runs `terraform init/apply` against `kind/tf`. Modules do not manage `lab.events`.
 
 ```bash
-go run -C cmd/ingestctl . apply -f tenants/acme.yaml
+go run -C cmd/ingestctl . apply -f examples/acme.yaml
 ```
 
 ```bash
-kubectl -n kafka get kafkatopic acme.orders
+kubectl -n kafka get kafkatopic acme.public.orders
 ```
 
 ```bash
 kubectl -n kafka get kafkauser acme
+```
+
+```bash
+kubectl -n kafka get kafkaconnector acme-orders-cdc
+```
+
+Insert and update `orders` in db `acme`. Debezium events land on `acme.public.orders`.
+
+```bash
+kubectl -n kafka exec -i postgres-0 -- psql -U lab -d acme -c "INSERT INTO orders (user_id, amount) VALUES (1, 9.99);"
+```
+
+```bash
+kubectl -n kafka exec -i postgres-0 -- psql -U lab -d acme -c "UPDATE orders SET amount = 12.50 WHERE id = 1;"
 ```
 
 ## Access

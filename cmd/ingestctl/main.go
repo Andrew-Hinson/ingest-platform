@@ -1,5 +1,5 @@
-// ingestctl apply -f tenants/acme.yaml
-// Parses tenant YAML, writes kind/tf/terraform.tfvars, runs terraform init/apply.
+// ingestctl apply -f examples/acme.yaml
+// Parses Project YAML, writes per-Project local Terraform state, runs terraform init/apply.
 package main
 
 import (
@@ -15,10 +15,31 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type tenantFile struct {
-	Tenant string  `yaml:"tenant"`
-	Topics []topic `yaml:"topics"`
-	ACLs   []acl   `yaml:"acls"`
+type projectFile struct {
+	Tenant     string      `yaml:"tenant"`
+	Project    string      `yaml:"project"`
+	Cluster    string      `yaml:"cluster"`
+	Prefix     string      `yaml:"prefix"`
+	Topics     []topic     `yaml:"topics"`
+	ACLs       []acl       `yaml:"acls"`
+	Connectors []connector `yaml:"connectors"`
+}
+
+func parseProject(raw []byte) (projectFile, error) {
+	var spec projectFile
+	if err := yaml.Unmarshal(raw, &spec); err != nil {
+		return spec, err
+	}
+	if spec.Tenant != "" {
+		return spec, errors.New("tenant is not a Project identity")
+	}
+	if spec.Project == "" {
+		return spec, errors.New("project is required")
+	}
+	if spec.Cluster == "" {
+		return spec, errors.New("cluster is required")
+	}
+	return spec, nil
 }
 
 type topic struct {
@@ -33,6 +54,14 @@ type acl struct {
 	Ops       []string `yaml:"ops"`
 }
 
+type connector struct {
+	Name        string `yaml:"name"`
+	Class       string `yaml:"class"`
+	Database    string `yaml:"database"`
+	Table       string `yaml:"table"`
+	TopicPrefix string `yaml:"topic_prefix"`
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -42,68 +71,63 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 || args[0] != "apply" {
-		return errors.New("usage: ingestctl apply -f <tenant.yaml>")
+		return errors.New("usage: ingestctl apply -f <project.yaml>")
 	}
 
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	file := fs.String("f", "", "tenant YAML")
+	file := fs.String("f", "", "Project YAML")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 	if *file == "" {
-		return errors.New("usage: ingestctl apply -f <tenant.yaml>")
+		return errors.New("usage: ingestctl apply -f <project.yaml>")
 	}
 
-	raw, err := readTenant(*file)
+	raw, err := readYAML(*file)
 	if err != nil {
 		return err
 	}
-	var spec tenantFile
-	if err := yaml.Unmarshal(raw, &spec); err != nil {
+	spec, err := parseProject(raw)
+	if err != nil {
 		return err
 	}
 	tfDir, err := findTFDir()
 	if err != nil {
 		return err
 	}
-	tfvars, err := planApply(spec, readLastTenant(tfDir), defaultMinISR)
+	tfvars, err := planApply(spec, defaultMinISR)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(tfDir, "terraform.tfvars"), []byte(tfvars), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(tfDir, lastTenantFile), []byte(spec.Tenant+"\n"), 0644); err != nil {
+	root := filepath.Dir(filepath.Dir(tfDir))
+	stateDir := projectStateDir(root, spec.Project)
+	tfvarsPath, statePath, err := writeApplyFiles(stateDir, tfvars)
+	if err != nil {
 		return err
 	}
 
 	if err := runTerraform(tfDir, "init"); err != nil {
 		return err
 	}
-	return runTerraform(tfDir, "apply", "-auto-approve")
+	return runTerraform(tfDir, "apply", "-auto-approve", "-state="+statePath, "-var-file="+tfvarsPath)
 }
 
-const (
-	defaultMinISR  = 2
-	lastTenantFile = ".ingestctl-tenant"
-)
+const defaultMinISR = 2
 
-func planApply(spec tenantFile, lastTenant string, minISR int) (string, error) {
-	if spec.Tenant == "" {
-		return "", errors.New("tenant is required")
-	}
-	if lastTenant != "" && lastTenant != spec.Tenant {
-		return "", fmt.Errorf("tenant %s would clobber %s", spec.Tenant, lastTenant)
-	}
+func planApply(spec projectFile, minISR int) (string, error) {
 	if len(spec.Topics) != 1 {
 		return "", errors.New("exactly one topic is required")
 	}
 	if len(spec.ACLs) != 1 {
 		return "", errors.New("exactly one acl is required")
 	}
+	if len(spec.Connectors) != 1 {
+		return "", errors.New("exactly one connector is required")
+	}
 	t := spec.Topics[0]
 	a := spec.ACLs[0]
+	c := spec.Connectors[0]
 	if t.Name == "" || t.Partitions < 1 || t.Replication < 1 {
 		return "", errors.New("topic needs name, partitions, replication")
 	}
@@ -116,25 +140,50 @@ func planApply(spec tenantFile, lastTenant string, minISR int) (string, error) {
 	if len(a.Ops) == 0 {
 		return "", errors.New("acl needs ops")
 	}
+	if c.Name == "" || c.Class == "" || c.Database == "" || c.Table == "" || c.TopicPrefix == "" {
+		return "", errors.New("connector needs name, class, database, table, topic_prefix")
+	}
+
+	prefix := spec.Prefix
+	if prefix == "" {
+		prefix = spec.Project
+	}
+	topicName := t.Name
+	dotted := prefix + "."
+	if !strings.HasPrefix(topicName, dotted) {
+		topicName = dotted + topicName
+	}
 
 	var b strings.Builder
-	writeStr(&b, "tenant", spec.Tenant)
-	writeStr(&b, "topic_name", t.Name)
+	writeStr(&b, "topic_name", topicName)
 	writeNum(&b, "partitions", t.Partitions)
 	writeNum(&b, "replicas", t.Replication)
 	writeNum(&b, "min_insync_replicas", minISR)
 	writeStr(&b, "principal", a.Principal)
-	writeStr(&b, "prefix", a.Resource)
+	writeStr(&b, "acl_resource", a.Resource)
 	writeList(&b, "topic_ops", a.Ops)
+	writeStr(&b, "connector_name", c.Name)
+	writeStr(&b, "connector_class", c.Class)
+	writeStr(&b, "connector_database", c.Database)
+	writeStr(&b, "connector_table", c.Table)
+	writeStr(&b, "connector_topic_prefix", c.TopicPrefix)
 	return b.String(), nil
 }
 
-func readLastTenant(tfDir string) string {
-	raw, err := os.ReadFile(filepath.Join(tfDir, lastTenantFile))
-	if err != nil {
-		return ""
+func projectStateDir(root, project string) string {
+	return filepath.Join(root, ".ingestctl", project)
+}
+
+func writeApplyFiles(stateDir, tfvars string) (tfvarsPath, statePath string, err error) {
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		return "", "", err
 	}
-	return strings.TrimSpace(string(raw))
+	tfvarsPath = filepath.Join(stateDir, "terraform.tfvars")
+	statePath = filepath.Join(stateDir, "terraform.tfstate")
+	if err := os.WriteFile(tfvarsPath, []byte(tfvars), 0644); err != nil {
+		return "", "", err
+	}
+	return tfvarsPath, statePath, nil
 }
 
 func writeStr(b *strings.Builder, key, v string) {
@@ -163,7 +212,7 @@ func writeList(b *strings.Builder, key string, vs []string) {
 	b.WriteString("]\n")
 }
 
-func readTenant(path string) ([]byte, error) {
+func readYAML(path string) ([]byte, error) {
 	raw, err := os.ReadFile(path)
 	if err == nil {
 		return raw, nil

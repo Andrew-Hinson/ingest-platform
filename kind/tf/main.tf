@@ -13,8 +13,24 @@ module "acl" {
   source = "../../modules/acl"
 
   principal = var.principal
-  prefix    = var.prefix
+  prefix    = var.acl_resource
   namespace = var.namespace
   cluster   = var.cluster
   topic_ops = var.topic_ops
+}
+
+module "connector" {
+  source = "../../modules/connector"
+
+  name              = var.connector_name
+  class             = var.connector_class
+  database          = var.connector_database
+  table             = var.connector_table
+  topic_prefix      = var.connector_topic_prefix
+  namespace         = var.namespace
+  cluster           = var.cluster
+  database_hostname = var.connector_hostname
+  database_port     = var.connector_port
+  database_user     = var.connector_user
+  database_password = var.connector_password
 }
