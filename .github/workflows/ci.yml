@@ -35,7 +35,7 @@ jobs:
       - name: terraform fmt
         run: terraform fmt -check $(git ls-files '*.tf')
       - name: terraform validate
-        working-directory: lab/tf
+        working-directory: kind/tf
         run: |
           mkdir -p "$HOME/.kube"
           printf '%s\n' 'apiVersion: v1' 'kind: Config' 'clusters: []' 'contexts: []' 'current-context: ""' 'users: []' > "$HOME/.kube/config"

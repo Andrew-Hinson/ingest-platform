@@ -2,18 +2,18 @@
 
 Self-service ingestion: YAML + Terraform give teams Kafka topics, ACLs, and a Debezium connector.
 
-**Now:** Kind + Strimzi Kafka 4.3.1, topic `lab.events`, Karapace, Postgres `orders`, KafkaConnect with Debezium, Prometheus, Grafana. Go producer/consumer against local brokers.
+**Now:** Kind Cluster + Strimzi Kafka 4.3.1, topic `lab.events`, Karapace, Postgres `orders`, KafkaConnect with Debezium, Prometheus, Grafana. Go producer/consumer against local brokers.
 
-Pinned versions: `lab/VERSIONS.md`. PRs run `.github/workflows/ci.yml` (gofmt, vet, test, terraform fmt/validate).
+Pinned versions: `kind/VERSIONS.md`. PRs run `.github/workflows/ci.yml` (gofmt, vet, test, terraform fmt/validate).
 
-## Lab standup
+## Platform standup
 
 Needs `kind` and `kubectl`. Run in order. Later steps wait on earlier ones.
 
-Create the Kind cluster named `ingest-platform`.
+Create the Kind Cluster named `ingest-platform`.
 
 ```bash
-kind create cluster --name ingest-platform --config lab/kind/config.yaml
+kind create cluster --name ingest-platform --config kind/kind/config.yaml
 ```
 
 Create the `kafka` namespace. Needed before operator, cluster, and sidecars.
@@ -39,7 +39,7 @@ kubectl -n kafka rollout status deployment/strimzi-cluster-operator --timeout=18
 Apply the Kafka cluster (3 dual-role brokers) and topic `lab.events`.
 
 ```bash
-kubectl apply -f lab/strimzi/config.yaml -n kafka
+kubectl apply -f kind/strimzi/config.yaml -n kafka
 ```
 
 Wait until the Kafka CR reports Ready. Brokers are not usable before this.
@@ -57,13 +57,13 @@ kubectl -n kafka get kafkatopic lab.events
 Apply Karapace (schema registry). Needs a Ready bootstrap.
 
 ```bash
-kubectl apply -f lab/karapace -n kafka
+kubectl apply -f kind/karapace -n kafka
 ```
 
-Apply Postgres (db `lab`, table `orders`, `wal_level=logical`). No publication or slot.
+Apply Postgres (`wal_level=logical`). Init creates Project database `acme` with table `orders`. No publication or slot.
 
 ```bash
-kubectl apply -f lab/postgres -n kafka
+kubectl apply -f kind/postgres -n kafka
 ```
 
 Wait until Postgres is ready. Inserts fail if the init SQL has not run.
@@ -78,10 +78,10 @@ Insert a row into `orders`.
 kubectl -n kafka exec -i postgres-0 -- psql -U lab -d lab -c "INSERT INTO orders (user_id, amount) VALUES (1, 9.99);"
 ```
 
-Apply KafkaConnect (Debezium plugin, Avro converter → Karapace). First apply builds a Connect image; Ready can take several minutes. No connector CR.
+Apply KafkaConnect (Debezium plugin, Avro converter → Karapace). First apply builds a Connect image; Ready can take several minutes. No connector CR until Apply.
 
 ```bash
-kubectl apply -f lab/connect -n kafka
+kubectl apply -f kind/connect -n kafka
 ```
 
 Wait until the KafkaConnect CR reports Ready.
@@ -93,28 +93,42 @@ kubectl -n kafka wait kafkaconnect/ingest-platform --for=condition=Ready --timeo
 Apply Prometheus and Grafana.
 
 ```bash
-kubectl apply -f lab/grafana -n kafka
+kubectl apply -f kind/grafana -n kafka
 ```
 
-## Terraform topic + ACL
+## Apply topic + ACL + connector
 
-`ingestctl` reads tenant YAML, writes `lab/tf/terraform.tfvars`, runs `terraform init/apply`. Modules do not manage `lab.events`.
+`ingestctl` reads Project YAML, writes per-Project local Terraform state under `.ingestctl/`, runs `terraform init/apply` against `kind/tf`. Modules do not manage `lab.events`.
 
 ```bash
-go run -C cmd/ingestctl . apply -f tenants/acme.yaml
+go run -C cmd/ingestctl . apply -f examples/acme.yaml
 ```
 
 ```bash
-kubectl -n kafka get kafkatopic acme.orders
+kubectl -n kafka get kafkatopic acme.public.orders
 ```
 
 ```bash
 kubectl -n kafka get kafkauser acme
 ```
 
+```bash
+kubectl -n kafka get kafkaconnector acme-orders-cdc
+```
+
+Insert and update `orders` in db `acme`. Debezium events land on `acme.public.orders`.
+
+```bash
+kubectl -n kafka exec -i postgres-0 -- psql -U lab -d acme -c "INSERT INTO orders (user_id, amount) VALUES (1, 9.99);"
+```
+
+```bash
+kubectl -n kafka exec -i postgres-0 -- psql -U lab -d acme -c "UPDATE orders SET amount = 12.50 WHERE id = 1;"
+```
+
 ## Access
 
-`./lab/port-forward.sh` maps brokers `19092-19094`, Karapace `8081`, Prometheus `9090`, Grafana `3000`. Ctrl-C stops all.
+`./kind/port-forward.sh` maps brokers `19092-19094`, Karapace `8081`, Prometheus `9090`, Grafana `3000`. Ctrl-C stops all.
 
 Broker bootstrap for clients: `127.0.0.1:19092` (`KAFKA_BOOTSTRAP` overrides).
 

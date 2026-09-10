@@ -1,0 +1,35 @@
+resource "kubernetes_manifest" "connector" {
+  manifest = {
+    apiVersion = "kafka.strimzi.io/v1"
+    kind       = "KafkaConnector"
+    metadata = {
+      name      = var.name
+      namespace = var.namespace
+      labels = {
+        "strimzi.io/cluster" = var.cluster
+      }
+    }
+    spec = {
+      class    = var.class
+      tasksMax = 1
+      config = {
+        "database.hostname"           = var.database_hostname
+        "database.port"               = tostring(var.database_port)
+        "database.user"               = var.database_user
+        "database.password"           = var.database_password
+        "database.dbname"             = var.database
+        "topic.prefix"                = var.topic_prefix
+        "table.include.list"          = var.table
+        "plugin.name"                 = "pgoutput"
+        "slot.name"                   = replace(var.name, "-", "_")
+        "publication.autocreate.mode" = "filtered"
+      }
+    }
+  }
+
+  computed_fields = [
+    "metadata.annotations",
+    "metadata.labels",
+    "status",
+  ]
+}
