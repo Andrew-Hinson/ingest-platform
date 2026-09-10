@@ -19,7 +19,7 @@ resource "kubernetes_manifest" "user" {
               name        = var.prefix
               patternType = "prefix"
             }
-            operations = ["Read", "Write", "Describe"]
+            operations = var.topic_ops
           },
           {
             resource = {

@@ -36,8 +36,10 @@ bin/
 dist/
 clients/producer/producer
 clients/consumer/consumer
+cmd/ingestctl/ingestctl
 
 # Terraform (weeks 3–4)
+.ingestctl-tenant
 .terraform/
 *.tfstate
 *.tfstate.*
@@ -72,3 +74,8 @@ checkpoints/
 CONTEXT.md
 CONTEXT-MAP.md
 docs/adr/
+
+# Local agent skill config + tickets
+AGENTS.md
+docs/agents/
+.scratch/

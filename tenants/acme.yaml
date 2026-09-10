@@ -1,0 +1,9 @@
+tenant: acme
+topics:
+  - name: acme.orders
+    partitions: 6
+    replication: 3
+acls:
+  - principal: acme
+    resource: acme.
+    ops: [Read, Write, Describe]

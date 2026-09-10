@@ -16,4 +16,5 @@ module "acl" {
   prefix    = var.prefix
   namespace = var.namespace
   cluster   = var.cluster
+  topic_ops = var.topic_ops
 }
