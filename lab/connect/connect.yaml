@@ -1,0 +1,93 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: ingest-platform-connect-configs
+  labels:
+    strimzi.io/cluster: ingest-platform
+spec:
+  partitions: 1
+  replicas: 3
+  config:
+    cleanup.policy: compact
+    min.insync.replicas: "2"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: ingest-platform-connect-offsets
+  labels:
+    strimzi.io/cluster: ingest-platform
+spec:
+  partitions: 25
+  replicas: 3
+  config:
+    cleanup.policy: compact
+    min.insync.replicas: "2"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: ingest-platform-connect-status
+  labels:
+    strimzi.io/cluster: ingest-platform
+spec:
+  partitions: 5
+  replicas: 3
+  config:
+    cleanup.policy: compact
+    min.insync.replicas: "2"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnect
+metadata:
+  name: ingest-platform
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  version: 4.3.1
+  replicas: 1
+  bootstrapServers: ingest-platform-kafka-bootstrap.kafka.svc.cluster.local:9092
+  groupId: ingest-platform-connect
+  configStorageTopic: ingest-platform-connect-configs
+  offsetStorageTopic: ingest-platform-connect-offsets
+  statusStorageTopic: ingest-platform-connect-status
+  config:
+    config.storage.replication.factor: 3
+    offset.storage.replication.factor: 3
+    status.storage.replication.factor: 3
+    key.converter: io.confluent.connect.avro.AvroConverter
+    value.converter: io.confluent.connect.avro.AvroConverter
+    key.converter.schema.registry.url: http://karapace.kafka.svc.cluster.local:8081
+    value.converter.schema.registry.url: http://karapace.kafka.svc.cluster.local:8081
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  build:
+    output:
+      type: docker
+      image: ttl.sh/ingest-platform-connect-4.3.1:24h
+    plugins:
+      - name: debezium-postgres
+        artifacts:
+          - type: tgz
+            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/3.6.2.Final/debezium-connector-postgres-3.6.2.Final-plugin.tar.gz
+            sha512sum: eabc5416446a32c3c763749262cd03115fbc2804bf48018348184f660222e9e5c8395306d9e795c9d52cbe246a5386142bdae376d418f6cf1bd5233e83e8ffe7
+      - name: avro-converter
+        artifacts:
+          - type: maven
+            group: io.confluent
+            artifact: kafka-connect-avro-converter
+            version: 8.3.1
+            repository: https://packages.confluent.io/maven
+            includeScope: runtime
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
