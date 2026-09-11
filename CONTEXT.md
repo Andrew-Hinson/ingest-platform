@@ -40,5 +40,9 @@ _Avoid_: entity, model, schema
 The derived lake relation for a Table. It lives in the Warehouse, namespaced by Prefix. Iceberg is a format, not a Cluster service.
 _Avoid_: landing zone, lakehouse
 
+**Instance Secret**:
+The credential store named after the Instance. Org/secops creates it. Apply and workloads retrieve it. Not in Project YAML.
+_Avoid_: password in YAML, generated credentials, Secrets created by Apply
+
 **Apply**:
-ingestctl's reconciliation of a Project. Kind: Instance, Database, Table, Kafka path. EKS: those plus Iceberg table. Prints Database connection. Credentials are not in YAML.
+ingestctl's reconciliation of a Project. Kind: Instance, Database, Table, Kafka path. EKS: those plus Iceberg table. Prints endpoint, Database, user, and Secret name. Does not print the password. Does not create Secrets.

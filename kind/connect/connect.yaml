@@ -59,6 +59,8 @@ spec:
     value.converter: io.confluent.connect.avro.AvroConverter
     key.converter.schema.registry.url: http://karapace.kafka.svc.cluster.local:8081
     value.converter.schema.registry.url: http://karapace.kafka.svc.cluster.local:8081
+    config.providers: secrets
+    config.providers.secrets.class: io.strimzi.kafka.KubernetesSecretConfigProvider
   resources:
     requests:
       cpu: 250m
@@ -91,3 +93,25 @@ spec:
       limits:
         cpu: "1"
         memory: 2Gi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ingest-platform-connect-secrets
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ingest-platform-connect-secrets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ingest-platform-connect-secrets
+subjects:
+  - kind: ServiceAccount
+    name: ingest-platform-connect
+    namespace: kafka

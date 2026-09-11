@@ -15,8 +15,8 @@ resource "kubernetes_manifest" "connector" {
       config = {
         "database.hostname"           = var.database_hostname
         "database.port"               = tostring(var.database_port)
-        "database.user"               = var.database_user
-        "database.password"           = var.database_password
+        "database.user"               = format("$${secrets:%s/%s:user}", var.namespace, var.secret_name)
+        "database.password"           = format("$${secrets:%s/%s:password}", var.namespace, var.secret_name)
         "database.dbname"             = var.database
         "topic.prefix"                = var.topic_prefix
         "table.include.list"          = var.table
