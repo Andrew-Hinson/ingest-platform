@@ -1,8 +1,8 @@
 # ingest-platform
 
-Self-service ingestion: YAML + Terraform give teams Kafka topics, ACLs, and a Debezium connector.
+Self-service ingestion: YAML + Terraform give teams an Instance, Kafka topics, ACLs, and a Debezium connector.
 
-**Now:** Kind Cluster + Strimzi Kafka 4.3.1, topic `lab.events`, Karapace, Postgres `orders`, KafkaConnect with Debezium, Prometheus, Grafana. Go producer/consumer against local brokers.
+**Now:** Kind Cluster + Strimzi Kafka 4.3.1, topic `lab.events`, Karapace, KafkaConnect with Debezium, Prometheus, Grafana. Apply creates the Instance from Project YAML. Go producer/consumer against local brokers.
 
 Pinned versions: `kind/VERSIONS.md`. PRs run `.github/workflows/ci.yml` (gofmt, vet, test, terraform fmt/validate).
 
@@ -60,25 +60,7 @@ Apply Karapace (schema registry). Needs a Ready bootstrap.
 kubectl apply -f kind/karapace -n kafka
 ```
 
-Apply Postgres (`wal_level=logical`). Init creates Project database `acme` with table `orders`. No publication or slot.
-
-```bash
-kubectl apply -f kind/postgres -n kafka
-```
-
-Wait until Postgres is ready. Inserts fail if the init SQL has not run.
-
-```bash
-kubectl -n kafka rollout status statefulset/postgres --timeout=180s
-```
-
-Insert a row into `orders`.
-
-```bash
-kubectl -n kafka exec -i postgres-0 -- psql -U lab -d lab -c "INSERT INTO orders (user_id, amount) VALUES (1, 9.99);"
-```
-
-Apply KafkaConnect (Debezium plugin, Avro converter → Karapace). First apply builds a Connect image; Ready can take several minutes. No connector CR until Apply.
+Apply KafkaConnect (Debezium plugin, Avro converter → Karapace). First apply builds a Connect image; Ready can take several minutes. No connector CR until Apply. No Cluster Postgres; Apply creates the Instance.
 
 ```bash
 kubectl apply -f kind/connect -n kafka
@@ -96,12 +78,24 @@ Apply Prometheus and Grafana.
 kubectl apply -f kind/grafana -n kafka
 ```
 
-## Apply topic + ACL + connector
+## Apply Instance + topic + ACL + connector
 
-`ingestctl` reads Project YAML, writes per-Project local Terraform state under `.ingestctl/`, runs `terraform init/apply` against `kind/tf`. Modules do not manage `lab.events`.
+`ingestctl` reads Project YAML, writes per-Project local Terraform state under `.ingestctl/`, runs `terraform init/apply` against `kind/tf`. Creator Apply brings up the Instance (in-cluster Postgres). Credentials are retrieved from a Secret named after the Instance. Apply does not create that Secret. YAML has no secret fields. Modules do not manage `lab.events`.
+
+The Secret must already exist (org/secops). Name is the Instance name (`acme`). Keys: `user`, `password`. Password length and randomization are not set by this product. Apply fails if the Secret is missing.
 
 ```bash
 go run -C cmd/ingestctl . apply -f examples/acme.yaml
+```
+
+Apply prints `endpoint`, `database`, `user`, and `secret`. It does not print the password. The Postgres pod and Connect retrieve `user`/`password` at runtime. Terraform never stores them.
+
+```bash
+kubectl -n kafka get secret acme
+```
+
+```bash
+kubectl -n kafka get statefulset acme
 ```
 
 ```bash
@@ -114,16 +108,6 @@ kubectl -n kafka get kafkauser acme
 
 ```bash
 kubectl -n kafka get kafkaconnector acme-orders-cdc
-```
-
-Insert and update `orders` in db `acme`. Debezium events land on `acme.public.orders`.
-
-```bash
-kubectl -n kafka exec -i postgres-0 -- psql -U lab -d acme -c "INSERT INTO orders (user_id, amount) VALUES (1, 9.99);"
-```
-
-```bash
-kubectl -n kafka exec -i postgres-0 -- psql -U lab -d acme -c "UPDATE orders SET amount = 12.50 WHERE id = 1;"
 ```
 
 ## Access

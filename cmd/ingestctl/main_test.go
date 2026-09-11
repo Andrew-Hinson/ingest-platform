@@ -110,6 +110,36 @@ func TestParseProject_namerRequiresTableDatabase(t *testing.T) {
 	}
 }
 
+func TestParseProject_instanceNameMax40(t *testing.T) {
+	name := "abcdefghijklmnopqrstuvwxyz0123456789abcde"
+	if len(name) != 41 {
+		t.Fatalf("fixture length %d, want 41", len(name))
+	}
+	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\n  name: " + name + "\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	if err == nil {
+		t.Fatal("expected error when Instance name is longer than 40")
+	}
+}
+
+func TestParseProject_creatorProjectAsInstanceNameMax40(t *testing.T) {
+	project := "abcdefghijklmnopqrstuvwxyz0123456789abcde"
+	_, err := parseProject([]byte("project: " + project + "\ncluster: kind\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	if err == nil {
+		t.Fatal("expected error when creator Project used as Instance name is longer than 40")
+	}
+}
+
+func TestParseProject_instanceName40Allowed(t *testing.T) {
+	name := "abcdefghijklmnopqrstuvwxyz0123456789abcd"
+	if len(name) != 40 {
+		t.Fatalf("fixture length %d, want 40", len(name))
+	}
+	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\n  name: " + name + "\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParseProject_requiresTableName(t *testing.T) {
 	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\ntables:\n  - columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
@@ -276,6 +306,86 @@ func TestPlanApply_instanceNameDefaultsToProject(t *testing.T) {
 	}
 }
 
+func TestSecretMissingError_tellsOperatorToCreateIt(t *testing.T) {
+	err := errSecretMissing("acme", "kafka")
+	want := `Secret "acme" not found in namespace "kafka"; create it first with keys user and password`
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %s", err, want)
+	}
+}
+
+func TestPlanApply_secretNamedAfterInstance(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	plan, err := planApply(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Connection.Secret != "acme" {
+		t.Fatalf("got Secret %q, want acme", plan.Connection.Secret)
+	}
+}
+
+func TestPlanApply_connectionFromInstanceNotYAML(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	plan, err := planApply(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Connection.Endpoint != "acme.kafka.svc.cluster.local:5432" {
+		t.Fatalf("got endpoint %q, want acme.kafka.svc.cluster.local:5432", plan.Connection.Endpoint)
+	}
+	if plan.Connection.Database != "acme" {
+		t.Fatalf("got Database %q, want acme", plan.Connection.Database)
+	}
+	if plan.Connection.User != "acme" {
+		t.Fatalf("got user %q, want acme", plan.Connection.User)
+	}
+}
+
+func TestPlanApply_twoCreatorsSameInstanceShareSecret(t *testing.T) {
+	a := validSpec()
+	a.Instance.Create = true
+	b := validSpec()
+	b.Project = "widgets"
+	b.Instance.Create = true
+	b.Instance.Name = "acme"
+	pa, err := planApply(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, err := planApply(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pa.Connection.Secret != "acme" || pb.Connection.Secret != "acme" {
+		t.Fatalf("got Secrets %q and %q, want both acme", pa.Connection.Secret, pb.Connection.Secret)
+	}
+}
+
+func TestPlanApply_creatorInstanceNameOverride(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	spec.Instance.Name = "shared"
+	plan, err := planApply(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Instance.Name != "shared" {
+		t.Fatalf("got Instance name %q, want shared", plan.Instance.Name)
+	}
+	if plan.Connection.Secret != "shared" {
+		t.Fatalf("got Secret %q, want shared", plan.Connection.Secret)
+	}
+	if plan.Connection.Endpoint != "shared.kafka.svc.cluster.local:5432" {
+		t.Fatalf("got endpoint %q, want shared.kafka.svc.cluster.local:5432", plan.Connection.Endpoint)
+	}
+	if plan.Connection.User != "shared" {
+		t.Fatalf("got user %q, want shared", plan.Connection.User)
+	}
+}
+
 func TestPlanApply_generatesDDL(t *testing.T) {
 	spec := validSpec()
 	nullableFalse := false
@@ -367,6 +477,15 @@ func TestPlanApply_exampleProjectYAML(t *testing.T) {
 	}
 	if plan.Tables[0].Connector.Database != "acme" {
 		t.Fatalf("got connector database %q, want acme", plan.Tables[0].Connector.Database)
+	}
+	if plan.Instance.Name != "acme" || !plan.Instance.Create {
+		t.Fatalf("got Instance %+v, want create acme", plan.Instance)
+	}
+	if plan.Connection.Secret != "acme" {
+		t.Fatalf("got Secret %q, want acme", plan.Connection.Secret)
+	}
+	if plan.Connection.Endpoint != "acme.kafka.svc.cluster.local:5432" {
+		t.Fatalf("got endpoint %q, want acme.kafka.svc.cluster.local:5432", plan.Connection.Endpoint)
 	}
 }
 

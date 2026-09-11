@@ -43,13 +43,7 @@ variable "database_port" {
   description = "Postgres port."
 }
 
-variable "database_user" {
+variable "secret_name" {
   type        = string
-  description = "Postgres user."
-}
-
-variable "database_password" {
-  type        = string
-  description = "Postgres password."
-  sensitive   = true
+  description = "Instance Secret Connect retrieves at runtime. Keys user and password."
 }

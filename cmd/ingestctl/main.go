@@ -63,6 +63,13 @@ func parseProject(raw []byte) (projectFile, error) {
 	if !spec.Instance.Create && spec.Instance.Name == "" {
 		return spec, errors.New("namer instance requires name")
 	}
+	instName := spec.Instance.Name
+	if spec.Instance.Create && instName == "" {
+		instName = spec.Project
+	}
+	if len(instName) > 40 {
+		return spec, errors.New("instance name must be at most 40 characters")
+	}
 	if len(spec.Tables) == 0 {
 		return spec, errors.New("tables is required")
 	}
@@ -106,11 +113,13 @@ var allowedColumnTypes = map[string]bool{
 }
 
 type applyPlan struct {
-	Prefix    string
-	Instance  plannedInstance
-	Databases []plannedDatabase
-	ACL       plannedACL
-	Tables    []plannedTable
+	Project    string
+	Prefix     string
+	Instance   plannedInstance
+	Databases  []plannedDatabase
+	Connection plannedConnection
+	ACL        plannedACL
+	Tables     []plannedTable
 }
 
 type plannedDatabase struct {
@@ -121,6 +130,13 @@ type plannedDatabase struct {
 type plannedInstance struct {
 	Name   string
 	Create bool
+}
+
+type plannedConnection struct {
+	Endpoint string
+	Database string
+	User     string
+	Secret   string
 }
 
 type plannedACL struct {
@@ -195,10 +211,18 @@ func run(args []string) error {
 		return err
 	}
 
+	if err := requireInstanceSecret(kindNamespace, plan.Connection.Secret); err != nil {
+		return err
+	}
+
 	if err := runTerraform(tfDir, "init"); err != nil {
 		return err
 	}
-	return runTerraform(tfDir, "apply", "-auto-approve", "-state="+statePath, "-var-file="+tfvarsPath)
+	if err := runTerraform(tfDir, "apply", "-auto-approve", "-state="+statePath, "-var-file="+tfvarsPath); err != nil {
+		return err
+	}
+	fmt.Print(formatConnection(plan.Connection))
+	return nil
 }
 
 // planApply derives Instance/Database actions, Kafka names, and DDL from each Table.
@@ -215,6 +239,7 @@ func planApply(spec projectFile) (applyPlan, error) {
 	if spec.Instance.Create && instName == "" {
 		instName = spec.Project
 	}
+	plan.Project = spec.Project
 	plan.Prefix = prefix
 	plan.Instance = plannedInstance{Name: instName, Create: spec.Instance.Create}
 	if spec.Instance.Create && len(spec.Databases) == 0 {
@@ -223,6 +248,16 @@ func planApply(spec projectFile) (applyPlan, error) {
 		for _, name := range spec.Databases {
 			plan.Databases = append(plan.Databases, plannedDatabase{Name: name, Create: true})
 		}
+	}
+	database := spec.Project
+	if len(plan.Databases) > 0 {
+		database = plan.Databases[0].Name
+	}
+	plan.Connection = plannedConnection{
+		Endpoint: instName + "." + kindNamespace + ".svc.cluster.local:5432",
+		Database: database,
+		User:     instName,
+		Secret:   instName,
 	}
 	plan.ACL = plannedACL{
 		Principal: prefix,
@@ -331,10 +366,14 @@ var sqlColumnTypes = map[string]string{
 	"serial":      "SERIAL",
 }
 
-// renderTfvars writes terraform vars for the first planned Table.
+// renderTfvars writes terraform vars for the Instance and first planned Table.
 func renderTfvars(plan applyPlan) string {
 	t := plan.Tables[0]
 	var b strings.Builder
+	writeStr(&b, "instance_name", plan.Instance.Name)
+	writeBool(&b, "instance_create", plan.Instance.Create)
+	writeStr(&b, "instance_database", plan.Connection.Database)
+	writeStr(&b, "instance_creator", plan.Project)
 	writeStr(&b, "topic_name", t.Topic)
 	writeNum(&b, "partitions", t.Partitions)
 	writeNum(&b, "replicas", kindReplicas)
@@ -347,6 +386,7 @@ func renderTfvars(plan applyPlan) string {
 	writeStr(&b, "connector_database", t.Connector.Database)
 	writeStr(&b, "connector_table", t.Connector.Table)
 	writeStr(&b, "connector_topic_prefix", t.Connector.TopicPrefix)
+	writeStr(&b, "connector_hostname", plan.Instance.Name)
 	return b.String()
 }
 
@@ -356,6 +396,7 @@ const (
 	defaultTasksMax       = 1
 	kindReplicas          = 3
 	kindMinISR            = 2
+	kindNamespace         = "kafka"
 )
 
 // projectStateDir is the per-Project Apply state path under .ingestctl.
@@ -374,6 +415,14 @@ func writeApplyFiles(stateDir, tfvars string) (tfvarsPath, statePath string, err
 		return "", "", err
 	}
 	return tfvarsPath, statePath, nil
+}
+
+// writeBool appends a tfvars bool assignment.
+func writeBool(b *strings.Builder, key string, v bool) {
+	b.WriteString(key)
+	b.WriteString(" = ")
+	b.WriteString(strconv.FormatBool(v))
+	b.WriteByte('\n')
 }
 
 // writeStr appends a quoted tfvars string assignment.
@@ -435,6 +484,32 @@ func findTFDir() (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// errSecretMissing is the Apply error when the Instance Secret is not in the cluster.
+func errSecretMissing(name, namespace string) error {
+	return fmt.Errorf("Secret %q not found in namespace %q; create it first with keys user and password", name, namespace)
+}
+
+// requireInstanceSecret checks the Secret exists. It does not read Secret data.
+func requireInstanceSecret(namespace, name string) error {
+	cmd := exec.Command("kubectl", "-n", namespace, "get", "secret", name, "-o", "name")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if bytes.Contains(out, []byte("NotFound")) {
+			return errSecretMissing(name, namespace)
+		}
+		return fmt.Errorf("lookup Secret %q: %s", name, bytes.TrimSpace(out))
+	}
+	return nil
+}
+
+// formatConnection prints endpoint, Database, user, and Secret name. Password is never printed.
+func formatConnection(conn plannedConnection) string {
+	return "endpoint: " + conn.Endpoint + "\n" +
+		"database: " + conn.Database + "\n" +
+		"user: " + conn.User + "\n" +
+		"secret: " + conn.Secret + "\n"
 }
 
 // runTerraform runs terraform with args in dir.

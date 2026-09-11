@@ -1,3 +1,13 @@
+module "instance" {
+  count  = var.instance_create ? 1 : 0
+  source = "../../modules/instance"
+
+  name      = var.instance_name
+  namespace = var.namespace
+  database  = var.instance_database
+  creator   = var.instance_creator
+}
+
 module "topic" {
   source = "../../modules/topic"
 
@@ -20,7 +30,8 @@ module "acl" {
 }
 
 module "connector" {
-  source = "../../modules/connector"
+  source     = "../../modules/connector"
+  depends_on = [module.instance]
 
   name              = var.connector_name
   class             = var.connector_class
@@ -31,6 +42,5 @@ module "connector" {
   cluster           = var.cluster
   database_hostname = var.connector_hostname
   database_port     = var.connector_port
-  database_user     = var.connector_user
-  database_password = var.connector_password
+  secret_name       = var.instance_name
 }

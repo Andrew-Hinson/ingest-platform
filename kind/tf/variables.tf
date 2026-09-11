@@ -3,6 +3,30 @@ variable "namespace" {
   default = "kafka"
 }
 
+variable "instance_name" {
+  type        = string
+  description = "Instance name. Also the Secret name to retrieve."
+  default     = "acme"
+}
+
+variable "instance_create" {
+  type        = bool
+  description = "Creator Apply brings up the Instance."
+  default     = false
+}
+
+variable "instance_database" {
+  type        = string
+  description = "Database name from Project YAML."
+  default     = "acme"
+}
+
+variable "instance_creator" {
+  type        = string
+  description = "Project that creates the Instance."
+  default     = "acme"
+}
+
 variable "cluster" {
   type    = string
   default = "ingest-platform"
@@ -87,17 +111,4 @@ variable "connector_port" {
   type        = number
   description = "Postgres port."
   default     = 5432
-}
-
-variable "connector_user" {
-  type        = string
-  description = "Postgres user."
-  default     = "lab"
-}
-
-variable "connector_password" {
-  type        = string
-  description = "Postgres password."
-  default     = "lab"
-  sensitive   = true
 }
