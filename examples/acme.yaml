@@ -1,17 +1,21 @@
+# Demo Project YAML. Not production source.
+# Creator Project: Instance create and Table DDL. Topic, ACL, and connector are derived.
 project: acme
 cluster: kind
-prefix: acme
-topics:
-  - name: acme.public.orders
-    partitions: 6
-    replication: 3
-acls:
-  - principal: acme
-    resource: acme.
-    ops: [Read, Write, Describe]
-connectors:
-  - name: acme-orders-cdc
-    class: io.debezium.connector.postgresql.PostgresConnector
-    database: acme
-    table: public.orders
-    topic_prefix: acme
+instance:
+  create: true
+tables:
+  - name: orders
+    columns:
+      - name: id
+        type: serial
+        primary_key: true
+      - name: user_id
+        type: integer
+        nullable: false
+      - name: amount
+        type: numeric
+        nullable: false
+      - name: updated_at
+        type: timestamptz
+        nullable: false
