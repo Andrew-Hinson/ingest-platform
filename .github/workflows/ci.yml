@@ -9,7 +9,7 @@ jobs:
   go:
     runs-on: ubuntu-latest
     env:
-      GO_MODULES: cmd/ingestctl clients/producer clients/consumer
+      GO_MODULES: cmd/ingestctl
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -35,7 +35,7 @@ jobs:
       - name: terraform fmt
         run: terraform fmt -check $(git ls-files '*.tf')
       - name: terraform validate
-        working-directory: kind/tf
+        working-directory: tf
         run: |
           mkdir -p "$HOME/.kube"
           printf '%s\n' 'apiVersion: v1' 'kind: Config' 'clusters: []' 'contexts: []' 'current-context: ""' 'users: []' > "$HOME/.kube/config"

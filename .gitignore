@@ -23,7 +23,7 @@ credentials.json
 kubeconfig
 *.kubeconfig
 
-# Go (clients/producer, later CLI)
+# Go
 *.exe
 *.exe~
 *.dll
@@ -34,8 +34,6 @@ kubeconfig
 vendor/
 bin/
 dist/
-clients/producer/producer
-clients/consumer/consumer
 cmd/ingestctl/ingestctl
 
 # Terraform

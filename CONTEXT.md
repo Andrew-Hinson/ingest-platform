@@ -5,7 +5,8 @@ A CLI and modules. A Project declares Tables. Developers write rows. Apply creat
 ## Language
 
 **Cluster**:
-A named Kubernetes runtime that already hosts Kafka and Connect. On EKS it also has the Warehouse.
+A named EKS runtime that already hosts Kafka, Connect, and the Warehouse.
+_Avoid_: kind, local cluster
 
 **Project**:
 The identity of a consumer git repo attached to a Cluster.
@@ -14,14 +15,14 @@ The identity of a consumer git repo attached to a Cluster.
 A Project override for resource names, defaulting to the Project name under the Cluster template `{prefix}.{name}`.
 
 **Platform stack**:
-The shared Kafka, Connect worker, and Warehouse on a Cluster. Kind has no Warehouse.
+The shared Kafka, Connect worker, and Warehouse on a Cluster.
 
 **Warehouse**:
-The shared S3 bucket and Iceberg catalog for a Cluster. EKS only. Projects do not create one. Prefix separates Iceberg tables.
+The shared S3 bucket and Iceberg catalog for a Cluster. Projects do not create one. Prefix separates Iceberg tables.
 _Avoid_: landing zone, data lake, per-Project bucket
 
 **Instance**:
-The Postgres server a Project's Databases live on. Production is RDS. Kind Apply creates it from Project YAML; there is no Cluster Postgres. Exactly one Project creates a given Instance; other Projects name it. Creator name defaults to the Project name.
+The Postgres server a Project's Databases live on. It is RDS. Exactly one Project creates a given Instance; other Projects name it. Creator name defaults to the Project name. There is no Cluster Postgres.
 _Avoid_: cluster, RDS as the generic name
 
 **Database**:
@@ -41,8 +42,8 @@ The derived lake relation for a Table. It lives in the Warehouse, namespaced by 
 _Avoid_: landing zone, lakehouse
 
 **Instance Secret**:
-The credential store named after the Instance. Org/secops creates it. Apply and workloads retrieve it. Not in Project YAML.
-_Avoid_: password in YAML, generated credentials, Secrets created by Apply
+The Secrets Manager store named after the Instance. Org/secops creates it. Apply and workloads retrieve it. Not in Project YAML.
+_Avoid_: password in YAML, generated credentials, Secrets created by Apply, Kubernetes Secret
 
 **Apply**:
-ingestctl's reconciliation of a Project. Kind: Instance, Database, Table, Kafka path. EKS: those plus Iceberg table. Prints endpoint, Database, user, and Secret name. Does not print the password. Does not create Secrets.
+ingestctl's reconciliation of a Project: Instance, Database, Table, Kafka path, and Iceberg table. Laptop or CI. Prints endpoint, Database, user, and Secret name. Does not print the password. Does not create Secrets.

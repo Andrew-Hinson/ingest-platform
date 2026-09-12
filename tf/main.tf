@@ -1,15 +1,5 @@
-module "instance" {
-  count  = var.instance_create ? 1 : 0
-  source = "../../modules/instance"
-
-  name      = var.instance_name
-  namespace = var.namespace
-  database  = var.instance_database
-  creator   = var.instance_creator
-}
-
 module "topic" {
-  source = "../../modules/topic"
+  source = "../modules/topic"
 
   name                = var.topic_name
   namespace           = var.namespace
@@ -20,7 +10,7 @@ module "topic" {
 }
 
 module "acl" {
-  source = "../../modules/acl"
+  source = "../modules/acl"
 
   principal = var.principal
   prefix    = var.acl_resource
@@ -30,8 +20,7 @@ module "acl" {
 }
 
 module "connector" {
-  source     = "../../modules/connector"
-  depends_on = [module.instance]
+  source = "../modules/connector"
 
   name              = var.connector_name
   class             = var.connector_class
