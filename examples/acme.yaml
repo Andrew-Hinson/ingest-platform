@@ -1,7 +1,7 @@
 # Demo Project YAML. Not production source.
 # Creator Project: Instance create and Table DDL. Topic, ACL, and connector are derived.
 project: acme
-cluster: kind
+cluster: ingest-platform
 instance:
   create: true
 tables:

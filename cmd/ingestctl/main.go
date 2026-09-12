@@ -172,7 +172,7 @@ func main() {
 	}
 }
 
-// run parses YAML, plans Apply, writes per-Project state, and terraform-applies kind/tf.
+// run parses YAML, plans Apply, writes per-Project state, and terraform-applies tf/.
 func run(args []string) error {
 	if len(args) == 0 || args[0] != "apply" {
 		return errors.New("usage: ingestctl apply -f <project.yaml>")
@@ -204,14 +204,10 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	root := filepath.Dir(filepath.Dir(tfDir))
+	root := filepath.Dir(tfDir)
 	stateDir := projectStateDir(root, spec.Project)
 	tfvarsPath, statePath, err := writeApplyFiles(stateDir, renderTfvars(plan))
 	if err != nil {
-		return err
-	}
-
-	if err := requireInstanceSecret(kindNamespace, plan.Connection.Secret); err != nil {
 		return err
 	}
 
@@ -254,7 +250,7 @@ func planApply(spec projectFile) (applyPlan, error) {
 		database = plan.Databases[0].Name
 	}
 	plan.Connection = plannedConnection{
-		Endpoint: instName + "." + kindNamespace + ".svc.cluster.local:5432",
+		Endpoint: instName,
 		Database: database,
 		User:     instName,
 		Secret:   instName,
@@ -376,8 +372,8 @@ func renderTfvars(plan applyPlan) string {
 	writeStr(&b, "instance_creator", plan.Project)
 	writeStr(&b, "topic_name", t.Topic)
 	writeNum(&b, "partitions", t.Partitions)
-	writeNum(&b, "replicas", kindReplicas)
-	writeNum(&b, "min_insync_replicas", kindMinISR)
+	writeNum(&b, "replicas", topicReplicas)
+	writeNum(&b, "min_insync_replicas", topicMinISR)
 	writeStr(&b, "principal", plan.ACL.Principal)
 	writeStr(&b, "acl_resource", plan.ACL.Resource)
 	writeList(&b, "topic_ops", plan.ACL.Ops)
@@ -394,9 +390,8 @@ const (
 	debeziumPostgresClass = "io.debezium.connector.postgresql.PostgresConnector"
 	defaultPartitions     = 3
 	defaultTasksMax       = 1
-	kindReplicas          = 3
-	kindMinISR            = 2
-	kindNamespace         = "kafka"
+	topicReplicas         = 3
+	topicMinISR           = 2
 )
 
 // projectStateDir is the per-Project Apply state path under .ingestctl.
@@ -464,44 +459,26 @@ func readYAML(path string) ([]byte, error) {
 	if ferr != nil {
 		return nil, err
 	}
-	return os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(tfDir)), path))
+	return os.ReadFile(filepath.Join(filepath.Dir(tfDir), path))
 }
 
-// findTFDir walks up from cwd until it finds kind/tf.
+// findTFDir walks up from cwd until it finds tf/.
 func findTFDir() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 	for {
-		cand := filepath.Join(dir, "kind", "tf")
+		cand := filepath.Join(dir, "tf")
 		if st, err := os.Stat(cand); err == nil && st.IsDir() {
 			return cand, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("kind/tf not found; run from the repo")
+			return "", errors.New("tf/ not found; run from the repo")
 		}
 		dir = parent
 	}
-}
-
-// errSecretMissing is the Apply error when the Instance Secret is not in the cluster.
-func errSecretMissing(name, namespace string) error {
-	return fmt.Errorf("Secret %q not found in namespace %q; create it first with keys user and password", name, namespace)
-}
-
-// requireInstanceSecret checks the Secret exists. It does not read Secret data.
-func requireInstanceSecret(namespace, name string) error {
-	cmd := exec.Command("kubectl", "-n", namespace, "get", "secret", name, "-o", "name")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		if bytes.Contains(out, []byte("NotFound")) {
-			return errSecretMissing(name, namespace)
-		}
-		return fmt.Errorf("lookup Secret %q: %s", name, bytes.TrimSpace(out))
-	}
-	return nil
 }
 
 // formatConnection prints endpoint, Database, user, and Secret name. Password is never printed.

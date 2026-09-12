@@ -12,7 +12,7 @@ func intPtr(v int) *int { return &v }
 func validSpec() projectFile {
 	return projectFile{
 		Project: "acme",
-		Cluster: "kind",
+		Cluster: "ingest-platform",
 		Tables: []table{{
 			Name:    "orders",
 			Columns: []column{{Name: "id", Type: "serial", PrimaryKey: true}},
@@ -21,90 +21,90 @@ func validSpec() projectFile {
 }
 
 func TestParseProject_rejectsTenantIdentity(t *testing.T) {
-	_, err := parseProject([]byte("tenant: acme\ncluster: kind\n"))
+	_, err := parseProject([]byte("tenant: acme\ncluster: ingest-platform\n"))
 	if err == nil {
 		t.Fatal("expected error when identity is tenant")
 	}
 }
 
 func TestParseProject_rejectsTopicsAsSource(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ntopics:\n  - name: acme.public.orders\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ntopics:\n  - name: acme.public.orders\n"))
 	if err == nil {
 		t.Fatal("expected error when topics is source")
 	}
 }
 
 func TestParseProject_rejectsACLsAsSource(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\nacls:\n  - principal: acme\n    resource: acme.\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\nacls:\n  - principal: acme\n    resource: acme.\n"))
 	if err == nil {
 		t.Fatal("expected error when acls is source")
 	}
 }
 
 func TestParseProject_rejectsConnectorsAsSource(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\nconnectors:\n  - name: acme-orders-cdc\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\nconnectors:\n  - name: acme-orders-cdc\n"))
 	if err == nil {
 		t.Fatal("expected error when connectors is source")
 	}
 }
 
 func TestParseProject_rejectsConnectionFields(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\npassword: secret\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\npassword: secret\n"))
 	if err == nil {
 		t.Fatal("expected error when connection fields are source")
 	}
 }
 
 func TestParseProject_projectAndCluster(t *testing.T) {
-	spec, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	spec, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if spec.Project != "acme" {
 		t.Fatalf("got project %q, want acme", spec.Project)
 	}
-	if spec.Cluster != "kind" {
-		t.Fatalf("got cluster %q, want kind", spec.Cluster)
+	if spec.Cluster != "ingest-platform" {
+		t.Fatalf("got cluster %q, want ingest-platform", spec.Cluster)
 	}
 }
 
 func TestParseProject_requiresTables(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\n"))
 	if err == nil {
 		t.Fatal("expected error when tables is missing")
 	}
 }
 
 func TestParseProject_pkCannotBeNullable(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: integer\n        primary_key: true\n        nullable: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: integer\n        primary_key: true\n        nullable: true\n"))
 	if err == nil {
 		t.Fatal("expected error when PK column is nullable")
 	}
 }
 
 func TestParseProject_requiresPrimaryKey(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: amount\n        type: numeric\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: amount\n        type: numeric\n"))
 	if err == nil {
 		t.Fatal("expected error when Table has no primary key")
 	}
 }
 
 func TestParseProject_requiresColumnName(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when column name is missing")
 	}
 }
 
 func TestParseProject_namerRequiresInstanceName(t *testing.T) {
-	_, err := parseProject([]byte("project: widgets\ncluster: kind\ninstance:\n  create: false\ntables:\n  - name: orders\n    database: acme\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: widgets\ncluster: ingest-platform\ninstance:\n  create: false\ntables:\n  - name: orders\n    database: acme\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when namer omits Instance name")
 	}
 }
 
 func TestParseProject_namerRequiresTableDatabase(t *testing.T) {
-	_, err := parseProject([]byte("project: widgets\ncluster: kind\ninstance:\n  name: acme\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: widgets\ncluster: ingest-platform\ninstance:\n  name: acme\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when namer Table omits database")
 	}
@@ -115,7 +115,7 @@ func TestParseProject_instanceNameMax40(t *testing.T) {
 	if len(name) != 41 {
 		t.Fatalf("fixture length %d, want 41", len(name))
 	}
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\n  name: " + name + "\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\n  name: " + name + "\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when Instance name is longer than 40")
 	}
@@ -123,7 +123,7 @@ func TestParseProject_instanceNameMax40(t *testing.T) {
 
 func TestParseProject_creatorProjectAsInstanceNameMax40(t *testing.T) {
 	project := "abcdefghijklmnopqrstuvwxyz0123456789abcde"
-	_, err := parseProject([]byte("project: " + project + "\ncluster: kind\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: " + project + "\ncluster: ingest-platform\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when creator Project used as Instance name is longer than 40")
 	}
@@ -134,35 +134,35 @@ func TestParseProject_instanceName40Allowed(t *testing.T) {
 	if len(name) != 40 {
 		t.Fatalf("fixture length %d, want 40", len(name))
 	}
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\n  name: " + name + "\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\n  name: " + name + "\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestParseProject_requiresTableName(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\ntables:\n  - columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\ntables:\n  - columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when Table name is missing")
 	}
 }
 
 func TestParseProject_rejectsUnlistedColumnType(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: varchar\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ninstance:\n  create: true\ntables:\n  - name: orders\n    columns:\n      - name: id\n        type: varchar\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when column type is not allowlisted")
 	}
 }
 
 func TestParseProject_rejectsTopicNameOverride(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ntables:\n  - name: orders\n    topic: custom.topic\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ntables:\n  - name: orders\n    topic: custom.topic\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when topic name is declared")
 	}
 }
 
 func TestParseProject_rejectsConnectorClassOverride(t *testing.T) {
-	_, err := parseProject([]byte("project: acme\ncluster: kind\ntables:\n  - name: orders\n    class: io.confluent.example\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
+	_, err := parseProject([]byte("project: acme\ncluster: ingest-platform\ntables:\n  - name: orders\n    class: io.confluent.example\n    columns:\n      - name: id\n        type: serial\n        primary_key: true\n"))
 	if err == nil {
 		t.Fatal("expected error when connector class is declared")
 	}
@@ -306,14 +306,6 @@ func TestPlanApply_instanceNameDefaultsToProject(t *testing.T) {
 	}
 }
 
-func TestSecretMissingError_tellsOperatorToCreateIt(t *testing.T) {
-	err := errSecretMissing("acme", "kafka")
-	want := `Secret "acme" not found in namespace "kafka"; create it first with keys user and password`
-	if err == nil || err.Error() != want {
-		t.Fatalf("got %v, want %s", err, want)
-	}
-}
-
 func TestPlanApply_secretNamedAfterInstance(t *testing.T) {
 	spec := validSpec()
 	spec.Instance.Create = true
@@ -333,8 +325,8 @@ func TestPlanApply_connectionFromInstanceNotYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Connection.Endpoint != "acme.kafka.svc.cluster.local:5432" {
-		t.Fatalf("got endpoint %q, want acme.kafka.svc.cluster.local:5432", plan.Connection.Endpoint)
+	if plan.Connection.Endpoint != "acme" {
+		t.Fatalf("got endpoint %q, want acme", plan.Connection.Endpoint)
 	}
 	if plan.Connection.Database != "acme" {
 		t.Fatalf("got Database %q, want acme", plan.Connection.Database)
@@ -378,8 +370,8 @@ func TestPlanApply_creatorInstanceNameOverride(t *testing.T) {
 	if plan.Connection.Secret != "shared" {
 		t.Fatalf("got Secret %q, want shared", plan.Connection.Secret)
 	}
-	if plan.Connection.Endpoint != "shared.kafka.svc.cluster.local:5432" {
-		t.Fatalf("got endpoint %q, want shared.kafka.svc.cluster.local:5432", plan.Connection.Endpoint)
+	if plan.Connection.Endpoint != "shared" {
+		t.Fatalf("got endpoint %q, want shared", plan.Connection.Endpoint)
 	}
 	if plan.Connection.User != "shared" {
 		t.Fatalf("got user %q, want shared", plan.Connection.User)
@@ -442,7 +434,7 @@ func TestPlanApply_exampleProjectYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(tfDir)), "examples", "acme.yaml"))
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(tfDir), "examples", "acme.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,8 +476,8 @@ func TestPlanApply_exampleProjectYAML(t *testing.T) {
 	if plan.Connection.Secret != "acme" {
 		t.Fatalf("got Secret %q, want acme", plan.Connection.Secret)
 	}
-	if plan.Connection.Endpoint != "acme.kafka.svc.cluster.local:5432" {
-		t.Fatalf("got endpoint %q, want acme.kafka.svc.cluster.local:5432", plan.Connection.Endpoint)
+	if plan.Connection.Endpoint != "acme" {
+		t.Fatalf("got endpoint %q, want acme", plan.Connection.Endpoint)
 	}
 }
 
@@ -513,10 +505,10 @@ func TestPlanApply_prefixOverride(t *testing.T) {
 	}
 }
 
-func TestFindTFDir_kindNotLab(t *testing.T) {
+func TestFindTFDir_findsTF(t *testing.T) {
 	root := t.TempDir()
-	kindTF := filepath.Join(root, "kind", "tf")
-	if err := os.MkdirAll(kindTF, 0755); err != nil {
+	tfDir := filepath.Join(root, "tf")
+	if err := os.MkdirAll(tfDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
@@ -524,8 +516,8 @@ func TestFindTFDir_kindNotLab(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != kindTF {
-		t.Fatalf("got %q, want %q", got, kindTF)
+	if got != tfDir {
+		t.Fatalf("got %q, want %q", got, tfDir)
 	}
 }
 
