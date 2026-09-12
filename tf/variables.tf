@@ -32,15 +32,30 @@ variable "cluster" {
   default = "ingest-platform"
 }
 
-variable "topic_name" {
-  type        = string
-  description = "Kafka topic to create."
-  default     = "acme.public.orders"
-}
-
-variable "partitions" {
-  type    = number
-  default = 3
+variable "tables" {
+  type = list(object({
+    topic_name             = string
+    partitions             = number
+    connector_name         = string
+    connector_class        = string
+    connector_database     = string
+    connector_table        = string
+    connector_topic_prefix = string
+    tasks_max              = number
+    publication_name       = string
+  }))
+  description = "Derived topic and connector per Table."
+  default = [{
+    topic_name             = "acme.public.orders"
+    partitions             = 3
+    connector_name         = "acme-orders-cdc"
+    connector_class        = "io.debezium.connector.postgresql.PostgresConnector"
+    connector_database     = "acme"
+    connector_table        = "public.orders"
+    connector_topic_prefix = "acme"
+    tasks_max              = 1
+    publication_name       = "acme_orders_cdc"
+  }]
 }
 
 variable "replicas" {
@@ -69,36 +84,6 @@ variable "topic_ops" {
   type        = list(string)
   description = "Topic ACL operations."
   default     = ["Read", "Write", "Describe"]
-}
-
-variable "connector_name" {
-  type        = string
-  description = "KafkaConnector metadata.name."
-  default     = "acme-orders-cdc"
-}
-
-variable "connector_class" {
-  type        = string
-  description = "Connect connector class."
-  default     = "io.debezium.connector.postgresql.PostgresConnector"
-}
-
-variable "connector_database" {
-  type        = string
-  description = "Postgres database name. YAML database, not the Platform db."
-  default     = "acme"
-}
-
-variable "connector_table" {
-  type        = string
-  description = "table.include.list."
-  default     = "public.orders"
-}
-
-variable "connector_topic_prefix" {
-  type        = string
-  description = "Debezium topic.prefix."
-  default     = "acme"
 }
 
 variable "connector_hostname" {
