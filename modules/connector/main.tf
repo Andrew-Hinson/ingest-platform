@@ -11,7 +11,7 @@ resource "kubernetes_manifest" "connector" {
     }
     spec = {
       class    = var.class
-      tasksMax = 1
+      tasksMax = var.tasks_max
       config = {
         "database.hostname"           = var.database_hostname
         "database.port"               = tostring(var.database_port)
@@ -22,6 +22,7 @@ resource "kubernetes_manifest" "connector" {
         "table.include.list"          = var.table
         "plugin.name"                 = "pgoutput"
         "slot.name"                   = replace(var.name, "-", "_")
+        "publication.name"            = var.publication_name
         "publication.autocreate.mode" = "filtered"
       }
     }

@@ -171,7 +171,7 @@ func TestParseProject_rejectsConnectorClassOverride(t *testing.T) {
 func TestPlanApply_partitionsBelowDefaultFails(t *testing.T) {
 	spec := validSpec()
 	spec.Tables[0].Partitions = intPtr(2)
-	if _, err := planApply(spec); err == nil {
+	if _, err := planApply(spec, liveSnapshot{}); err == nil {
 		t.Fatal("expected error when partitions is below default 3")
 	}
 }
@@ -179,7 +179,7 @@ func TestPlanApply_partitionsBelowDefaultFails(t *testing.T) {
 func TestPlanApply_partitionsMayRaise(t *testing.T) {
 	spec := validSpec()
 	spec.Tables[0].Partitions = intPtr(6)
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestPlanApply_partitionsMayRaise(t *testing.T) {
 func TestPlanApply_tasksMaxBelowDefaultFails(t *testing.T) {
 	spec := validSpec()
 	spec.Tables[0].TasksMax = intPtr(0)
-	if _, err := planApply(spec); err == nil {
+	if _, err := planApply(spec, liveSnapshot{}); err == nil {
 		t.Fatal("expected error when tasks_max is below default 1")
 	}
 }
@@ -199,7 +199,7 @@ func TestPlanApply_tasksMaxBelowDefaultFails(t *testing.T) {
 func TestPlanApply_tasksMaxMayRaise(t *testing.T) {
 	spec := validSpec()
 	spec.Tables[0].TasksMax = intPtr(4)
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestPlanApply_tasksMaxMayRaise(t *testing.T) {
 }
 
 func TestPlanApply_partitionsDefault(t *testing.T) {
-	plan, err := planApply(validSpec())
+	plan, err := planApply(validSpec(), liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestPlanApply_partitionsDefault(t *testing.T) {
 }
 
 func TestPlanApply_tasksMaxDefault(t *testing.T) {
-	plan, err := planApply(validSpec())
+	plan, err := planApply(validSpec(), liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestPlanApply_tasksMaxDefault(t *testing.T) {
 }
 
 func TestPlanApply_derivesConnectorFromTable(t *testing.T) {
-	plan, err := planApply(validSpec())
+	plan, err := planApply(validSpec(), liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestPlanApply_derivesConnectorFromTable(t *testing.T) {
 }
 
 func TestPlanApply_derivesACLFromPrefix(t *testing.T) {
-	plan, err := planApply(validSpec())
+	plan, err := planApply(validSpec(), liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestPlanApply_derivesACLFromPrefix(t *testing.T) {
 func TestPlanApply_schemaOverride(t *testing.T) {
 	spec := validSpec()
 	spec.Tables[0].Schema = "sales"
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestPlanApply_schemaOverride(t *testing.T) {
 func TestPlanApply_creatorOmitsDatabasesGetsProjectDatabase(t *testing.T) {
 	spec := validSpec()
 	spec.Instance.Create = true
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestPlanApply_creatorOmitsDatabasesGetsProjectDatabase(t *testing.T) {
 func TestPlanApply_instanceNameDefaultsToProject(t *testing.T) {
 	spec := validSpec()
 	spec.Instance.Create = true
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestPlanApply_instanceNameDefaultsToProject(t *testing.T) {
 func TestPlanApply_secretNamedAfterInstance(t *testing.T) {
 	spec := validSpec()
 	spec.Instance.Create = true
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestPlanApply_secretNamedAfterInstance(t *testing.T) {
 func TestPlanApply_connectionFromInstanceNotYAML(t *testing.T) {
 	spec := validSpec()
 	spec.Instance.Create = true
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,11 +343,11 @@ func TestPlanApply_twoCreatorsSameInstanceShareSecret(t *testing.T) {
 	b.Project = "widgets"
 	b.Instance.Create = true
 	b.Instance.Name = "acme"
-	pa, err := planApply(a)
+	pa, err := planApply(a, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pb, err := planApply(b)
+	pb, err := planApply(b, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func TestPlanApply_creatorInstanceNameOverride(t *testing.T) {
 	spec := validSpec()
 	spec.Instance.Create = true
 	spec.Instance.Name = "shared"
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestPlanApply_generatesDDL(t *testing.T) {
 		{Name: "id", Type: "serial", PrimaryKey: true},
 		{Name: "user_id", Type: "integer", Nullable: &nullableFalse},
 	}
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,7 @@ func TestPlanApply_generatesDDL(t *testing.T) {
 }
 
 func TestPlanApply_derivesTopicFromTable(t *testing.T) {
-	plan, err := planApply(validSpec())
+	plan, err := planApply(validSpec(), liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +411,7 @@ func TestPlanApply_eachTableGetsTopicAndConnector(t *testing.T) {
 		Name:    "items",
 		Columns: []column{{Name: "id", Type: "serial", PrimaryKey: true}},
 	})
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,6 +426,43 @@ func TestPlanApply_eachTableGetsTopicAndConnector(t *testing.T) {
 	}
 	if plan.Tables[1].Connector.Name != "acme-items-cdc" {
 		t.Fatalf("got connector %q, want acme-items-cdc", plan.Tables[1].Connector.Name)
+	}
+	if plan.Tables[0].DDL == "" || plan.Tables[1].DDL == "" {
+		t.Fatal("each Table must have DDL")
+	}
+	if strings.Contains(plan.Tables[0].DDL, "ALTER") || strings.Contains(plan.Tables[1].DDL, "ALTER") {
+		t.Fatal("Apply must not ALTER")
+	}
+	if plan.Tables[0].Connector.Publication != "acme_orders_cdc" {
+		t.Fatalf("got publication %q, want acme_orders_cdc", plan.Tables[0].Connector.Publication)
+	}
+	if plan.Tables[1].Connector.Publication != "acme_items_cdc" {
+		t.Fatalf("got publication %q, want acme_items_cdc", plan.Tables[1].Connector.Publication)
+	}
+}
+
+func TestPlanApply_createsMissingTableWhenLiveHasOthers(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	spec.Tables = append(spec.Tables, table{
+		Name:    "items",
+		Columns: []column{{Name: "id", Type: "serial", PrimaryKey: true}},
+	})
+	live := liveSnapshot{
+		Databases: []string{"acme"},
+		Tables: []liveTable{{
+			Database: "acme",
+			Schema:   "public",
+			Name:     "orders",
+			Columns:  []liveColumn{{Name: "id", Type: "serial", PrimaryKey: true}},
+		}},
+	}
+	plan, err := planApply(spec, live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Tables[1].DDL != "CREATE TABLE IF NOT EXISTS public.items (\n  id SERIAL PRIMARY KEY\n)" {
+		t.Fatalf("got missing Table DDL:\n%s", plan.Tables[1].DDL)
 	}
 }
 
@@ -451,7 +488,7 @@ func TestPlanApply_exampleProjectYAML(t *testing.T) {
 	if len(spec.Tables) == 0 || len(spec.Tables[0].Columns) == 0 {
 		t.Fatal("example YAML must declare Table columns")
 	}
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +521,7 @@ func TestPlanApply_exampleProjectYAML(t *testing.T) {
 func TestPlanApply_prefixDefaultsToProject(t *testing.T) {
 	spec := validSpec()
 	spec.Prefix = ""
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,12 +533,100 @@ func TestPlanApply_prefixDefaultsToProject(t *testing.T) {
 func TestPlanApply_prefixOverride(t *testing.T) {
 	spec := validSpec()
 	spec.Prefix = "widgets"
-	plan, err := planApply(spec)
+	plan, err := planApply(spec, liveSnapshot{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plan.Tables[0].Topic != "widgets.public.orders" {
 		t.Fatalf("got topic %q, want widgets.public.orders", plan.Tables[0].Topic)
+	}
+}
+
+func TestPlanApply_failsWhenLiveTableDoesNotMatchYAML(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	live := liveSnapshot{
+		Tables: []liveTable{{
+			Database: "acme",
+			Schema:   "public",
+			Name:     "orders",
+			Columns: []liveColumn{
+				{Name: "id", Type: "serial", PrimaryKey: true},
+				{Name: "amount", Type: "numeric", Nullable: true},
+			},
+		}},
+	}
+	if _, err := planApply(spec, live); err == nil {
+		t.Fatal("expected error when live Table does not match YAML DDL")
+	}
+}
+
+func TestPlanApply_reApplySucceedsWhenLiveMatchesYAML(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	live := liveSnapshot{
+		Databases: []string{"acme"},
+		Tables: []liveTable{{
+			Database: "acme",
+			Schema:   "public",
+			Name:     "orders",
+			Columns: []liveColumn{
+				{Name: "id", Type: "serial", PrimaryKey: true},
+			},
+		}},
+	}
+	plan, err := planApply(spec, live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(plan.Tables[0].DDL, "CREATE TABLE IF NOT EXISTS") {
+		t.Fatalf("got DDL %q, want CREATE TABLE IF NOT EXISTS", plan.Tables[0].DDL)
+	}
+	if strings.Contains(plan.Tables[0].DDL, "ALTER") {
+		t.Fatal("re-Apply must not ALTER")
+	}
+}
+
+func TestPlanApply_createsOwnedDatabaseDDL(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	plan, err := planApply(spec, liveSnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Databases) != 1 || plan.Databases[0].DDL != "CREATE DATABASE acme" {
+		t.Fatalf("got databases %+v, want CREATE DATABASE acme", plan.Databases)
+	}
+}
+
+func TestPlanApply_skipsDatabaseDDLWhenLiveHasIt(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	plan, err := planApply(spec, liveSnapshot{Databases: []string{"acme"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Databases) != 1 || plan.Databases[0].DDL != "" {
+		t.Fatalf("got databases %+v, want no Database DDL", plan.Databases)
+	}
+}
+
+func TestPlanApply_databasesListGetsDDL(t *testing.T) {
+	spec := validSpec()
+	spec.Instance.Create = true
+	spec.Databases = []string{"sales", "billing"}
+	plan, err := planApply(spec, liveSnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Databases) != 2 {
+		t.Fatalf("got %d databases, want 2", len(plan.Databases))
+	}
+	if plan.Databases[0].DDL != "CREATE DATABASE sales" {
+		t.Fatalf("got %q, want CREATE DATABASE sales", plan.Databases[0].DDL)
+	}
+	if plan.Databases[1].DDL != "CREATE DATABASE billing" {
+		t.Fatalf("got %q, want CREATE DATABASE billing", plan.Databases[1].DDL)
 	}
 }
 
@@ -553,11 +678,11 @@ func TestWriteApplyFiles_twoProjectsDoNotClobberTfvars(t *testing.T) {
 	root := t.TempDir()
 	acmeDir := projectStateDir(root, "acme")
 	bravoDir := projectStateDir(root, "bravo")
-	acmeVars, acmeState, err := writeApplyFiles(acmeDir, "topic_name = \"acme.public.orders\"\n")
+	acmeVars, acmeState, _, err := writeApplyFiles(acmeDir, "topic_name = \"acme.public.orders\"\n", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	bravoVars, bravoState, err := writeApplyFiles(bravoDir, "topic_name = \"bravo.public.orders\"\n")
+	bravoVars, bravoState, _, err := writeApplyFiles(bravoDir, "topic_name = \"bravo.public.orders\"\n", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,5 +702,29 @@ func TestWriteApplyFiles_twoProjectsDoNotClobberTfvars(t *testing.T) {
 	}
 	if acmeState == bravoState {
 		t.Fatal("acme and bravo must not share terraform state path")
+	}
+}
+
+func TestWriteApplyFiles_sqlIsApplyOutput(t *testing.T) {
+	root := t.TempDir()
+	stateDir := projectStateDir(root, "acme")
+	sql := "CREATE DATABASE acme;\nCREATE TABLE IF NOT EXISTS public.orders (\n  id SERIAL PRIMARY KEY\n)\n"
+	_, _, sqlPath, err := writeApplyFiles(stateDir, "topic_name = \"acme.public.orders\"\n", sql)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(stateDir, "apply.sql")
+	if sqlPath != want {
+		t.Fatalf("got %q, want %q", sqlPath, want)
+	}
+	raw, err := os.ReadFile(sqlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != sql {
+		t.Fatalf("got SQL %q, want %q", raw, sql)
+	}
+	if filepath.Dir(sqlPath) == root {
+		t.Fatal("generated SQL must not land in the repo root")
 	}
 }

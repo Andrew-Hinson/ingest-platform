@@ -47,3 +47,13 @@ variable "secret_name" {
   type        = string
   description = "Instance Secret Connect retrieves at runtime. Keys user and password."
 }
+
+variable "tasks_max" {
+  type        = number
+  description = "Connector tasksMax. Floor is 1."
+}
+
+variable "publication_name" {
+  type        = string
+  description = "Debezium publication.name. Unique per Table."
+}

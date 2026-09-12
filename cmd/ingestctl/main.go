@@ -4,15 +4,20 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"gopkg.in/yaml.v3"
 )
 
@@ -112,6 +117,25 @@ var allowedColumnTypes = map[string]bool{
 	"serial":      true,
 }
 
+type liveSnapshot struct {
+	Databases []string
+	Tables    []liveTable
+}
+
+type liveTable struct {
+	Database string
+	Schema   string
+	Name     string
+	Columns  []liveColumn
+}
+
+type liveColumn struct {
+	Name       string
+	Type       string
+	Nullable   bool
+	PrimaryKey bool
+}
+
 type applyPlan struct {
 	Project    string
 	Prefix     string
@@ -125,6 +149,7 @@ type applyPlan struct {
 type plannedDatabase struct {
 	Name   string
 	Create bool
+	DDL    string
 }
 
 type plannedInstance struct {
@@ -162,6 +187,7 @@ type plannedConnector struct {
 	Database    string
 	Table       string
 	TopicPrefix string
+	Publication string
 }
 
 // main runs apply and exits 1 on error.
@@ -172,7 +198,7 @@ func main() {
 	}
 }
 
-// run parses YAML, plans Apply, writes per-Project state, and terraform-applies tf/.
+// run parses YAML, plans Apply against live DDL, writes per-Project state, applies SQL, then terraform.
 func run(args []string) error {
 	if len(args) == 0 || args[0] != "apply" {
 		return errors.New("usage: ingestctl apply -f <project.yaml>")
@@ -200,17 +226,29 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := planApply(spec)
+	user, password, err := retrieveInstanceSecret(instanceName(spec))
 	if err != nil {
 		return err
 	}
+	login := instanceLogin{Host: instanceName(spec), User: user, Password: password}
+	live, err := inspectLive(login)
+	if err != nil {
+		return err
+	}
+	plan, err := planApply(spec, live)
+	if err != nil {
+		return err
+	}
+	plan.Connection.User = user
 	root := filepath.Dir(tfDir)
 	stateDir := projectStateDir(root, spec.Project)
-	tfvarsPath, statePath, err := writeApplyFiles(stateDir, renderTfvars(plan))
+	tfvarsPath, statePath, _, err := writeApplyFiles(stateDir, renderTfvars(plan), renderApplySQL(plan))
 	if err != nil {
 		return err
 	}
-
+	if err := applySQL(login, plan); err != nil {
+		return err
+	}
 	if err := runTerraform(tfDir, "init"); err != nil {
 		return err
 	}
@@ -222,7 +260,8 @@ func run(args []string) error {
 }
 
 // planApply derives Instance/Database actions, Kafka names, and DDL from each Table.
-func planApply(spec projectFile) (applyPlan, error) {
+// live is the Instance snapshot; a present Table that does not match YAML is an error.
+func planApply(spec projectFile, live liveSnapshot) (applyPlan, error) {
 	var plan applyPlan
 	if len(spec.Tables) == 0 {
 		return plan, errors.New("tables is required")
@@ -239,10 +278,10 @@ func planApply(spec projectFile) (applyPlan, error) {
 	plan.Prefix = prefix
 	plan.Instance = plannedInstance{Name: instName, Create: spec.Instance.Create}
 	if spec.Instance.Create && len(spec.Databases) == 0 {
-		plan.Databases = []plannedDatabase{{Name: spec.Project, Create: true}}
+		plan.Databases = []plannedDatabase{ownedDatabase(spec.Project, live)}
 	} else {
 		for _, name := range spec.Databases {
-			plan.Databases = append(plan.Databases, plannedDatabase{Name: name, Create: true})
+			plan.Databases = append(plan.Databases, ownedDatabase(name, live))
 		}
 	}
 	database := spec.Project
@@ -283,6 +322,12 @@ func planApply(spec projectFile) (applyPlan, error) {
 		if tasksMax < defaultTasksMax {
 			return plan, fmt.Errorf("tasks_max %d is below default %d", tasksMax, defaultTasksMax)
 		}
+		if liveTbl, ok := findLiveTable(live, database, schema, t.Name); ok {
+			if !tableMatchesYAML(t.Columns, liveTbl.Columns) {
+				return plan, fmt.Errorf("table %s.%s does not match YAML DDL", schema, t.Name)
+			}
+		}
+		connectorName := prefix + "-" + t.Name + "-cdc"
 		plan.Tables = append(plan.Tables, plannedTable{
 			Name:       t.Name,
 			Schema:     schema,
@@ -292,11 +337,12 @@ func planApply(spec projectFile) (applyPlan, error) {
 			TasksMax:   tasksMax,
 			DDL:        tableDDL(schema, t.Name, t.Columns),
 			Connector: plannedConnector{
-				Name:        prefix + "-" + t.Name + "-cdc",
+				Name:        connectorName,
 				Class:       debeziumPostgresClass,
 				Database:    database,
 				Table:       schema + "." + t.Name,
 				TopicPrefix: prefix,
+				Publication: strings.ReplaceAll(connectorName, "-", "_"),
 			},
 		})
 	}
@@ -341,6 +387,56 @@ func tableDDL(schema, name string, cols []column) string {
 	return b.String()
 }
 
+// ownedDatabase is a Database this Project creates. DDL is omitted when live already has it.
+func ownedDatabase(name string, live liveSnapshot) plannedDatabase {
+	db := plannedDatabase{Name: name, Create: true}
+	if !liveHasDatabase(live, name) {
+		db.DDL = "CREATE DATABASE " + name
+	}
+	return db
+}
+
+// liveHasDatabase reports whether the snapshot lists name.
+func liveHasDatabase(live liveSnapshot, name string) bool {
+	for _, db := range live.Databases {
+		if db == name {
+			return true
+		}
+	}
+	return false
+}
+
+// findLiveTable returns the snapshot row for database.schema.name.
+func findLiveTable(live liveSnapshot, database, schema, name string) (liveTable, bool) {
+	for _, tbl := range live.Tables {
+		if tbl.Database == database && tbl.Schema == schema && tbl.Name == name {
+			return tbl, true
+		}
+	}
+	return liveTable{}, false
+}
+
+// tableMatchesYAML is true when live columns match YAML name, type, nullability, and PK.
+func tableMatchesYAML(want []column, live []liveColumn) bool {
+	if len(want) != len(live) {
+		return false
+	}
+	byName := make(map[string]liveColumn, len(live))
+	for _, col := range live {
+		byName[col.Name] = col
+	}
+	for _, col := range want {
+		got, ok := byName[col.Name]
+		if !ok {
+			return false
+		}
+		if got.Type != col.Type || got.Nullable != columnNullable(col) || got.PrimaryKey != col.PrimaryKey {
+			return false
+		}
+	}
+	return true
+}
+
 // columnNullable is false for PK columns; others default true unless YAML sets nullable.
 func columnNullable(col column) bool {
 	if col.PrimaryKey {
@@ -362,27 +458,34 @@ var sqlColumnTypes = map[string]string{
 	"serial":      "SERIAL",
 }
 
-// renderTfvars writes terraform vars for the Instance and first planned Table.
+// renderTfvars writes terraform vars for the Instance and every planned Table.
 func renderTfvars(plan applyPlan) string {
-	t := plan.Tables[0]
 	var b strings.Builder
 	writeStr(&b, "instance_name", plan.Instance.Name)
 	writeBool(&b, "instance_create", plan.Instance.Create)
 	writeStr(&b, "instance_database", plan.Connection.Database)
 	writeStr(&b, "instance_creator", plan.Project)
-	writeStr(&b, "topic_name", t.Topic)
-	writeNum(&b, "partitions", t.Partitions)
 	writeNum(&b, "replicas", topicReplicas)
 	writeNum(&b, "min_insync_replicas", topicMinISR)
 	writeStr(&b, "principal", plan.ACL.Principal)
 	writeStr(&b, "acl_resource", plan.ACL.Resource)
 	writeList(&b, "topic_ops", plan.ACL.Ops)
-	writeStr(&b, "connector_name", t.Connector.Name)
-	writeStr(&b, "connector_class", t.Connector.Class)
-	writeStr(&b, "connector_database", t.Connector.Database)
-	writeStr(&b, "connector_table", t.Connector.Table)
-	writeStr(&b, "connector_topic_prefix", t.Connector.TopicPrefix)
 	writeStr(&b, "connector_hostname", plan.Instance.Name)
+	b.WriteString("tables = [\n")
+	for _, t := range plan.Tables {
+		b.WriteString("  {\n")
+		writeStrIndent(&b, "    ", "topic_name", t.Topic)
+		writeNumIndent(&b, "    ", "partitions", t.Partitions)
+		writeStrIndent(&b, "    ", "connector_name", t.Connector.Name)
+		writeStrIndent(&b, "    ", "connector_class", t.Connector.Class)
+		writeStrIndent(&b, "    ", "connector_database", t.Connector.Database)
+		writeStrIndent(&b, "    ", "connector_table", t.Connector.Table)
+		writeStrIndent(&b, "    ", "connector_topic_prefix", t.Connector.TopicPrefix)
+		writeNumIndent(&b, "    ", "tasks_max", t.TasksMax)
+		writeStrIndent(&b, "    ", "publication_name", t.Connector.Publication)
+		b.WriteString("  },\n")
+	}
+	b.WriteString("]\n")
 	return b.String()
 }
 
@@ -392,24 +495,67 @@ const (
 	defaultTasksMax       = 1
 	topicReplicas         = 3
 	topicMinISR           = 2
+	postgresPort          = "5432"
 )
+
+type instanceLogin struct {
+	Host     string
+	User     string
+	Password string
+}
 
 // projectStateDir is the per-Project Apply state path under .ingestctl.
 func projectStateDir(root, project string) string {
 	return filepath.Join(root, ".ingestctl", project)
 }
 
-// writeApplyFiles writes terraform.tfvars and returns the sibling state path.
-func writeApplyFiles(stateDir, tfvars string) (tfvarsPath, statePath string, err error) {
+// writeApplyFiles writes terraform.tfvars and apply.sql under the Project state dir.
+func writeApplyFiles(stateDir, tfvars, sql string) (tfvarsPath, statePath, sqlPath string, err error) {
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	tfvarsPath = filepath.Join(stateDir, "terraform.tfvars")
 	statePath = filepath.Join(stateDir, "terraform.tfstate")
+	sqlPath = filepath.Join(stateDir, "apply.sql")
 	if err := os.WriteFile(tfvarsPath, []byte(tfvars), 0644); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return tfvarsPath, statePath, nil
+	if err := os.WriteFile(sqlPath, []byte(sql), 0644); err != nil {
+		return "", "", "", err
+	}
+	return tfvarsPath, statePath, sqlPath, nil
+}
+
+// renderApplySQL concatenates owned Database and Table DDL. It is Apply output, not source.
+func renderApplySQL(plan applyPlan) string {
+	var b strings.Builder
+	for _, db := range plan.Databases {
+		if db.DDL == "" {
+			continue
+		}
+		b.WriteString(db.DDL)
+		b.WriteByte('\n')
+	}
+	for _, tbl := range plan.Tables {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(tbl.DDL)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// writeStrIndent appends an indented quoted tfvars string assignment.
+func writeStrIndent(b *strings.Builder, indent, key, v string) {
+	b.WriteString(indent)
+	writeStr(b, key, v)
+}
+
+// writeNumIndent appends an indented tfvars number assignment.
+func writeNumIndent(b *strings.Builder, indent, key string, v int) {
+	b.WriteString(indent)
+	writeNum(b, key, v)
 }
 
 // writeBool appends a tfvars bool assignment.
@@ -487,6 +633,219 @@ func formatConnection(conn plannedConnection) string {
 		"database: " + conn.Database + "\n" +
 		"user: " + conn.User + "\n" +
 		"secret: " + conn.Secret + "\n"
+}
+
+// instanceName is the logical Instance name from YAML (creator default is Project).
+func instanceName(spec projectFile) string {
+	if spec.Instance.Name != "" {
+		return spec.Instance.Name
+	}
+	return spec.Project
+}
+
+// retrieveInstanceSecret loads user and password from Secrets Manager. Apply does not create it.
+func retrieveInstanceSecret(name string) (user, password string, err error) {
+	out, err := exec.Command("aws", "secretsmanager", "get-secret-value", "--secret-id", name, "--query", "SecretString", "--output", "text").Output()
+	if err != nil {
+		return "", "", fmt.Errorf("instance secret %s: %w", name, err)
+	}
+	var creds struct {
+		User     string `json:"user"`
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal(out, &creds); err != nil {
+		return "", "", err
+	}
+	if creds.User == "" || creds.Password == "" {
+		return "", "", fmt.Errorf("instance secret %s missing user or password", name)
+	}
+	return creds.User, creds.Password, nil
+}
+
+// inspectLive reads Databases and Table columns from the Instance.
+func inspectLive(login instanceLogin) (liveSnapshot, error) {
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, postgresURL(login, "postgres"))
+	if err != nil {
+		return liveSnapshot{}, err
+	}
+	defer conn.Close(ctx)
+	rows, err := conn.Query(ctx, `SELECT datname FROM pg_database WHERE datistemplate = false`)
+	if err != nil {
+		return liveSnapshot{}, err
+	}
+	defer rows.Close()
+	var live liveSnapshot
+	var dbs []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return liveSnapshot{}, err
+		}
+		dbs = append(dbs, name)
+	}
+	if err := rows.Err(); err != nil {
+		return liveSnapshot{}, err
+	}
+	live.Databases = dbs
+	for _, db := range dbs {
+		if db == "postgres" || db == "rdsadmin" {
+			continue
+		}
+		tables, err := inspectDatabase(ctx, login, db)
+		if err != nil {
+			return liveSnapshot{}, err
+		}
+		live.Tables = append(live.Tables, tables...)
+	}
+	return live, nil
+}
+
+// inspectDatabase reads Table columns in one Database.
+func inspectDatabase(ctx context.Context, login instanceLogin, database string) ([]liveTable, error) {
+	conn, err := pgx.Connect(ctx, postgresURL(login, database))
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close(ctx)
+	rows, err := conn.Query(ctx, `
+SELECT n.nspname, c.relname
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema')`)
+	if err != nil {
+		return nil, err
+	}
+	var found []liveTable
+	for rows.Next() {
+		var schema, name string
+		if err := rows.Scan(&schema, &name); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		found = append(found, liveTable{Database: database, Schema: schema, Name: name})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	for i := range found {
+		cols, err := inspectColumns(ctx, conn, found[i].Schema, found[i].Name)
+		if err != nil {
+			return nil, err
+		}
+		found[i].Columns = cols
+	}
+	return found, nil
+}
+
+// inspectColumns reads name, mapped type, nullability, and PK for one Table.
+func inspectColumns(ctx context.Context, conn *pgx.Conn, schema, name string) ([]liveColumn, error) {
+	rel := schema + "." + name
+	pkRows, err := conn.Query(ctx, `
+SELECT a.attname
+FROM pg_index i
+JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
+WHERE i.indrelid = $1::regclass AND i.indisprimary`, rel)
+	if err != nil {
+		return nil, err
+	}
+	pks := map[string]bool{}
+	for pkRows.Next() {
+		var col string
+		if err := pkRows.Scan(&col); err != nil {
+			pkRows.Close()
+			return nil, err
+		}
+		pks[col] = true
+	}
+	if err := pkRows.Err(); err != nil {
+		pkRows.Close()
+		return nil, err
+	}
+	pkRows.Close()
+	rows, err := conn.Query(ctx, `
+SELECT a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, COALESCE(pg_get_expr(ad.adbin, ad.adrelid), '')
+FROM pg_attribute a
+LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+WHERE a.attrelid = $1::regclass AND a.attnum > 0 AND NOT a.attisdropped
+ORDER BY a.attnum`, rel)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var cols []liveColumn
+	for rows.Next() {
+		var col liveColumn
+		var pgType, def string
+		if err := rows.Scan(&col.Name, &pgType, &col.Nullable, &def); err != nil {
+			return nil, err
+		}
+		col.Type = mapLiveType(pgType, def)
+		col.PrimaryKey = pks[col.Name]
+		cols = append(cols, col)
+	}
+	return cols, rows.Err()
+}
+
+// mapLiveType maps a Postgres type (and default) onto the YAML allowlist.
+func mapLiveType(pgType, def string) string {
+	base := pgType
+	if i := strings.IndexByte(pgType, '('); i >= 0 {
+		base = pgType[:i]
+	}
+	if strings.HasPrefix(def, "nextval(") && base == "integer" {
+		return "serial"
+	}
+	if base == "timestamp with time zone" {
+		return "timestamptz"
+	}
+	return base
+}
+
+// applySQL runs owned Database and Table DDL on the Instance.
+func applySQL(login instanceLogin, plan applyPlan) error {
+	ctx := context.Background()
+	for _, db := range plan.Databases {
+		if db.DDL == "" {
+			continue
+		}
+		if err := execSQL(ctx, login, "postgres", db.DDL); err != nil {
+			return err
+		}
+	}
+	for _, tbl := range plan.Tables {
+		if err := execSQL(ctx, login, tbl.Database, tbl.DDL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// execSQL runs one statement against database.
+func execSQL(ctx context.Context, login instanceLogin, database, sql string) error {
+	conn, err := pgx.Connect(ctx, postgresURL(login, database))
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	_, err = conn.Exec(ctx, sql)
+	return err
+}
+
+// postgresURL is a libpq URL for host:5432. Password is not logged.
+func postgresURL(login instanceLogin, database string) string {
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(login.User, login.Password),
+		Host:   net.JoinHostPort(login.Host, postgresPort),
+		Path:   "/" + database,
+	}
+	q := u.Query()
+	q.Set("sslmode", "prefer")
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // runTerraform runs terraform with args in dir.
