@@ -34,10 +34,10 @@ kubeconfig
 vendor/
 bin/
 dist/
-cmd/ingestctl/ingestctl
+cmd/relay/relay
 
 # Terraform
-.ingestctl/
+.relay/
 .terraform/
 *.tfstate
 *.tfstate.*
@@ -75,4 +75,6 @@ CONTEXT-MAP.md
 AGENTS.md
 docs/agents/
 .scratch/
-docs/
+docs/*
+!docs/adr/
+!docs/adr/**

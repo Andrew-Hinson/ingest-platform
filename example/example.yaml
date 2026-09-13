@@ -1,11 +1,11 @@
 apiVersion: relay/v1
 kind: Config
-project: example-service
+name: example-service
 cluster: prod          # existing Cluster; file never creates one
 
 instance:
   create: true
-# databases:
+database: {}
 tables:
   - name: orders
     # schema: public   # default
@@ -20,4 +20,3 @@ kafka:
   partitions: 3
   replicas: 3
   min.insync.replicas: 2
-  

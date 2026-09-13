@@ -1,0 +1,122 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string) error {
+	if len(args) == 0 || args[0] != "apply" {
+		return errors.New("usage: relay apply -f <config.yaml>")
+	}
+	file, env, err := parseApplyFlags(args[1:])
+	if err != nil {
+		return err
+	}
+	raw, err := readYAML(file)
+	if err != nil {
+		return err
+	}
+	spec, err := parseConfig(raw)
+	if err != nil {
+		return err
+	}
+	if err := env.validate(spec.Instance.Create); err != nil {
+		return err
+	}
+	tfDir, err := findTFDir()
+	if err != nil {
+		return err
+	}
+	creds, err := retrieveInstanceSecret(instanceName(spec))
+	if err != nil {
+		return err
+	}
+	root := filepath.Dir(tfDir)
+	stateDir := configStateDir(root, spec.Name)
+	endpoint, err := resolveEndpoint(creds, instanceName(spec), spec.Instance.Create)
+	if err != nil {
+		return err
+	}
+	login := instanceLogin{Host: endpoint, User: creds.User, Password: creds.Password}
+
+	var live liveSnapshot
+	if spec.Instance.Create {
+		live = liveSnapshot{}
+	} else {
+		live, err = inspectLive(login)
+		if err != nil {
+			return err
+		}
+	}
+	plan, err := planApply(spec, live)
+	if err != nil {
+		return err
+	}
+	plan.Connection.User = creds.User
+	plan.Connection.Endpoint = endpoint
+	tfvarsPath, statePath, _, err := writeApplyFiles(stateDir, renderTfvars(plan, env), renderApplySQL(plan))
+	if err != nil {
+		return err
+	}
+	tfEnv := []string{"TF_VAR_master_password=" + creds.Password}
+	if err := runTerraform(tfDir, nil, "init"); err != nil {
+		return err
+	}
+	if spec.Instance.Create {
+		if err := runTerraform(tfDir, tfEnv, "apply", "-auto-approve", "-state="+statePath, "-var-file="+tfvarsPath, "-target=module.rds"); err != nil {
+			return err
+		}
+		if out, err := terraformOutput(tfDir, statePath, "rds_endpoint"); err == nil && out != "" {
+			endpoint = out
+			login.Host = endpoint
+			plan.Connection.Endpoint = endpoint
+			if _, _, _, err := writeApplyFiles(stateDir, renderTfvars(plan, env), renderApplySQL(plan)); err != nil {
+				return err
+			}
+		}
+		live, err = inspectLive(login)
+		if err != nil {
+			return err
+		}
+		plan, err = planApply(spec, live)
+		if err != nil {
+			return err
+		}
+		plan.Connection.User = creds.User
+		plan.Connection.Endpoint = endpoint
+		tfvarsPath, statePath, _, err = writeApplyFiles(stateDir, renderTfvars(plan, env), renderApplySQL(plan))
+		if err != nil {
+			return err
+		}
+	}
+	if err := applySQL(login, plan); err != nil {
+		return err
+	}
+	if err := runTerraform(tfDir, tfEnv, "apply", "-auto-approve", "-state="+statePath, "-var-file="+tfvarsPath); err != nil {
+		return err
+	}
+	fmt.Print(formatConnection(plan.Connection))
+	return nil
+}
+
+func readYAML(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err == nil {
+		return raw, nil
+	}
+	tfDir, ferr := findTFDir()
+	if ferr != nil {
+		return nil, err
+	}
+	return os.ReadFile(filepath.Join(filepath.Dir(tfDir), path))
+}
