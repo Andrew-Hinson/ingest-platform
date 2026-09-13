@@ -31,7 +31,7 @@ tables:
 
 Optional `prefix:` (default: Config name). Optional `kafka:` (`partitions`, `replicas`, `min.insync.replicas`; defaults 3/3/2). Unknown keys are rejected.
 
-Org/secops creates a Secrets Manager secret named after the Instance (`user`, `password`, optional `host`) before Apply. YAML has no secret fields.
+Org/secops creates a Secrets Manager secret named after the Instance (`user`, `password`, optional `host`) before Apply. YAML has no secret fields. The Debezium plugin ZIP must include the [MSK config-providers JAR](https://github.com/aws-samples/msk-config-providers/releases). The Connect role needs `secretsmanager:GetSecretValue` and `DescribeSecret` on the Instance Secret. Connect VPC needs a path to Secrets Manager.
 
 ## Apply
 

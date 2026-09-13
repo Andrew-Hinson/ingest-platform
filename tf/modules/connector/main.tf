@@ -1,3 +1,13 @@
+resource "aws_mskconnect_worker_configuration" "this" {
+  name                    = "${var.name}-worker"
+  properties_file_content = <<-EOT
+  key.converter=org.apache.kafka.connect.storage.StringConverter
+  value.converter=org.apache.kafka.connect.storage.StringConverter
+  config.providers=secretsmanager
+  config.providers.secretsmanager.class=com.amazonaws.kafka.config.providers.SecretsManagerConfigProvider
+  EOT
+}
+
 resource "aws_mskconnect_connector" "this" {
   name                 = var.name
   kafkaconnect_version = var.kafkaconnect_version
@@ -26,6 +36,7 @@ resource "aws_mskconnect_connector" "this" {
     "topic.creation.enable"                     = "true"
     "topic.creation.default.partitions"         = tostring(var.partitions)
     "topic.creation.default.replication.factor" = tostring(var.replicas)
+    "config.action.reload"                      = "none"
   }
 
   kafka_cluster {
@@ -55,4 +66,9 @@ resource "aws_mskconnect_connector" "this" {
   }
 
   service_execution_role_arn = var.role_arn
+
+  worker_configuration {
+    arn      = aws_mskconnect_worker_configuration.this.arn
+    revision = aws_mskconnect_worker_configuration.this.latest_revision
+  }
 }
