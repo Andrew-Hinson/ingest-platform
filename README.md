@@ -17,7 +17,7 @@ name: example-service
 cluster: prod
 instance:
   create: true          # or create: false and name: existing-instance
-database: {}            # name defaults to Config name
+database: {}            # name defaults to Config name, hyphens stripped, + db; override is sanitized the same way
 tables:
   - name: orders
     columns:

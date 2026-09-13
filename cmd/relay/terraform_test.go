@@ -73,7 +73,7 @@ func TestRenderTfvars_omitsPassword(t *testing.T) {
 	if strings.Contains(strings.ToLower(out), "password") {
 		t.Fatalf("password in tfvars: %s", out)
 	}
-	if !strings.Contains(out, "connector_name = \"acme-acme-cdc\"") {
+	if !strings.Contains(out, "connector_name = \"acme-acmedb-cdc\"") {
 		t.Fatalf("missing connector: %s", out)
 	}
 }

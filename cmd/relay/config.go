@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -112,9 +113,13 @@ func instanceName(spec configFile) string {
 
 func databaseName(spec configFile) string {
 	if spec.Database.Name != "" {
-		return spec.Database.Name
+		return sanitizeDatabaseName(spec.Database.Name)
 	}
-	return spec.Name
+	return sanitizeDatabaseName(spec.Name) + "db"
+}
+
+func sanitizeDatabaseName(name string) string {
+	return strings.ReplaceAll(strings.ToLower(name), "-", "")
 }
 
 var allowedColumnTypes = map[string]bool{

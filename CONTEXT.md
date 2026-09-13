@@ -27,7 +27,7 @@ The RDS server a Config's Database lives on. A Config creates it or names an exi
 _Avoid_: cluster, RDS as the generic term
 
 **Database**:
-A named Postgres database on an Instance. This Config always creates it. One per Config. Share happens at Instance only.
+A named Postgres database on an Instance. This Config always creates it. One per Config. Share happens at Instance only. Names are lowercased with hyphens removed. Default is the Config name plus a `db` suffix (`example-service` → `exampleservicedb`). An override is sanitized the same way (`shop-db` → `shopdb`).
 _Avoid_: schema, database.create false
 
 **Schema**:
