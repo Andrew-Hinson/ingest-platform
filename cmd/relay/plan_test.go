@@ -78,7 +78,19 @@ func TestPlanApply_databaseDefaultsToConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Database.Name != "acme" || plan.Database.DDL != "CREATE DATABASE acme" {
+	if plan.Database.Name != "acmedb" || plan.Database.DDL != "CREATE DATABASE acmedb" {
+		t.Fatalf("got Database %+v", plan.Database)
+	}
+}
+
+func TestPlanApply_databaseNameStripsHyphensAndAddsDB(t *testing.T) {
+	spec := validSpec()
+	spec.Name = "example-service"
+	plan, err := planApply(spec, liveSnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Database.Name != "exampleservicedb" || plan.Database.DDL != "CREATE DATABASE exampleservicedb" {
 		t.Fatalf("got Database %+v", plan.Database)
 	}
 }
@@ -95,8 +107,20 @@ func TestPlanApply_databaseNameOverride(t *testing.T) {
 	}
 }
 
+func TestPlanApply_databaseNameOverrideIsSanitized(t *testing.T) {
+	spec := validSpec()
+	spec.Database.Name = "shop-db"
+	plan, err := planApply(spec, liveSnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Database.Name != "shopdb" || plan.Database.DDL != "CREATE DATABASE shopdb" {
+		t.Fatalf("got Database %+v", plan.Database)
+	}
+}
+
 func TestPlanApply_skipsDatabaseDDLWhenLiveHasIt(t *testing.T) {
-	plan, err := planApply(validSpec(), liveSnapshot{Databases: []string{"acme"}})
+	plan, err := planApply(validSpec(), liveSnapshot{Databases: []string{"acmedb"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,16 +151,16 @@ func TestPlanApply_oneConnectorPerDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Connector.Name != "acme-acme-cdc" {
+	if plan.Connector.Name != "acme-acmedb-cdc" {
 		t.Fatalf("got connector %q", plan.Connector.Name)
 	}
 	if plan.Connector.TableIncludeList != "public.orders,public.items" {
 		t.Fatalf("got include %q", plan.Connector.TableIncludeList)
 	}
-	if plan.Connector.Publication != "acme_acme_cdc" {
+	if plan.Connector.Publication != "acme_acmedb_cdc" {
 		t.Fatalf("got publication %q", plan.Connector.Publication)
 	}
-	if plan.Sink.Name != "acme-acme-iceberg" {
+	if plan.Sink.Name != "acme-acmedb-iceberg" {
 		t.Fatalf("got sink %q", plan.Sink.Name)
 	}
 	if strings.Join(plan.Sink.Topics, ",") != "acme.public.orders,acme.public.items" {
@@ -214,7 +238,7 @@ func TestPlanApply_generatesDDL(t *testing.T) {
 func TestPlanApply_failsWhenLiveTableDoesNotMatchYAML(t *testing.T) {
 	live := liveSnapshot{
 		Tables: []liveTable{{
-			Database: "acme",
+			Database: "acmedb",
 			Schema:   "public",
 			Name:     "orders",
 			Columns: []liveColumn{
@@ -230,9 +254,9 @@ func TestPlanApply_failsWhenLiveTableDoesNotMatchYAML(t *testing.T) {
 
 func TestPlanApply_reApplySucceedsWhenLiveMatchesYAML(t *testing.T) {
 	live := liveSnapshot{
-		Databases: []string{"acme"},
+		Databases: []string{"acmedb"},
 		Tables: []liveTable{{
-			Database: "acme",
+			Database: "acmedb",
 			Schema:   "public",
 			Name:     "orders",
 			Columns:  []liveColumn{{Name: "id", Type: "serial", PrimaryKey: true}},
@@ -275,6 +299,9 @@ func TestPlanApply_exampleYAML(t *testing.T) {
 	}
 	if plan.Connector.TableIncludeList != "public.orders" {
 		t.Fatalf("got include %q", plan.Connector.TableIncludeList)
+	}
+	if plan.Database.Name != "exampleservicedb" || plan.Database.DDL != "CREATE DATABASE exampleservicedb" {
+		t.Fatalf("got Database %+v", plan.Database)
 	}
 	if plan.Instance.Name != "example-service" || !plan.Instance.Create {
 		t.Fatalf("got Instance %+v", plan.Instance)
