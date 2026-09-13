@@ -1,49 +1,43 @@
-# Ingest Platform
+# Relay
 
-A CLI and modules. A Project declares Tables. Developers write rows. Apply creates the Database objects and pipes each Table to Kafka and the Warehouse. Project YAML lives in the consumer git repo.
+A Config is the YAML a service team commits. Apply attaches that Config to an existing Cluster: an Instance, one Database, Tables, and a streaming path to Iceberg.
 
 ## Language
 
-**Cluster**:
-A named EKS runtime that already hosts Kafka, Connect, and the Warehouse.
-_Avoid_: kind, local cluster
-
-**Project**:
-The identity of a consumer git repo attached to a Cluster.
-
-**Prefix**:
-A Project override for resource names, defaulting to the Project name under the Cluster template `{prefix}.{name}`.
-
-**Platform stack**:
-The shared Kafka, Connect worker, and Warehouse on a Cluster.
-
-**Warehouse**:
-The shared S3 bucket and Iceberg catalog for a Cluster. Projects do not create one. Prefix separates Iceberg tables.
-_Avoid_: landing zone, data lake, per-Project bucket
-
-**Instance**:
-The Postgres server a Project's Databases live on. It is RDS. Exactly one Project creates a given Instance; other Projects name it. Creator name defaults to the Project name. There is no Cluster Postgres.
-_Avoid_: cluster, RDS as the generic name
-
-**Database**:
-A named Postgres database. A `databases:` list in YAML means this Project creates those Databases. A Table always names its Database. If this Project creates an Instance and omits `databases:`, Apply creates a Database named after the Project.
-_Avoid_: schema
-
-**Schema**:
-A Postgres namespace inside a Database. Default `public`. A Table may override it.
-_Avoid_: using this word for DDL or for Database
-
-**Table**:
-A named relation this Project owns. Always declared, with columns as DDL, and a primary key. Name is the relation (`orders`), not `public.orders`. A Table is the source of a Kafka topic and an Iceberg table.
-_Avoid_: entity, model, schema
-
-**Iceberg table**:
-The derived lake relation for a Table. It lives in the Warehouse, namespaced by Prefix. Iceberg is a format, not a Cluster service.
-_Avoid_: landing zone, lakehouse
-
-**Instance Secret**:
-The Secrets Manager store named after the Instance. Org/secops creates it. Apply and workloads retrieve it. Not in Project YAML.
-_Avoid_: password in YAML, generated credentials, Secrets created by Apply, Kubernetes Secret
+**Config**:
+The YAML a service team commits. Input to Apply.
+_Avoid_: Project, manifest, Relay file
 
 **Apply**:
-ingestctl's reconciliation of a Project: Instance, Database, Table, Kafka path, and Iceberg table. Laptop or CI. Prints endpoint, Database, user, and Secret name. Does not print the password. Does not create Secrets.
+Reconciliation of a Config. v1 has no destroy.
+
+**Cluster**:
+A named shared MSK, Connect, and Warehouse. A Config names it and never creates it.
+_Avoid_: kind, per-Config Kafka
+
+**Warehouse**:
+The shared S3 bucket and Glue Iceberg catalog for a Cluster.
+_Avoid_: per-Config bucket, landing zone
+
+**Iceberg table**:
+The derived lake relation for a Table. BI reads it. Not a Relay object.
+
+**Instance**:
+The RDS server a Config's Database lives on. A Config creates it or names an existing one.
+_Avoid_: cluster, RDS as the generic term
+
+**Database**:
+A named Postgres database on an Instance. This Config always creates it. One per Config. Share happens at Instance only.
+_Avoid_: schema, database.create false
+
+**Schema**:
+A Postgres namespace inside a Database. Default `public`.
+
+**Table**:
+A named relation this Config owns. Columns are DDL. A primary key is required. The app writes rows only.
+
+**Prefix**:
+A Config override for resource names, defaulting to the Config name. Topics use `{prefix}.{schema}.{table}`.
+
+**Instance Secret**:
+The Secrets Manager store named after the Instance. Org creates it. Apply retrieves it. Not in Config.

@@ -9,7 +9,7 @@ jobs:
   go:
     runs-on: ubuntu-latest
     env:
-      GO_MODULES: cmd/ingestctl
+      GO_MODULES: cmd/relay
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -37,7 +37,5 @@ jobs:
       - name: terraform validate
         working-directory: tf
         run: |
-          mkdir -p "$HOME/.kube"
-          printf '%s\n' 'apiVersion: v1' 'kind: Config' 'clusters: []' 'contexts: []' 'current-context: ""' 'users: []' > "$HOME/.kube/config"
           terraform init -backend=false
           terraform validate

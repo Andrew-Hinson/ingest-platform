@@ -1,4 +1,4 @@
-module github.com/Andrew-Hinson/ingest-platform/cmd/ingestctl
+module github.com/Andrew-Hinson/ingest-platform/cmd/relay
 
 go 1.27.0
 
