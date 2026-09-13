@@ -1,0 +1,23 @@
+apiVersion: relay/v1
+kind: Config
+project: example-service
+cluster: prod          # existing Cluster; file never creates one
+
+instance:
+  create: true
+# databases:
+tables:
+  - name: orders
+    # schema: public   # default
+    columns:
+      - name: id
+        type: serial
+        primary_key: true
+      - name: amount
+        type: numeric
+        nullable: false
+kafka:
+  partitions: 3
+  replicas: 3
+  min.insync.replicas: 2
+  
